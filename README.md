@@ -34,8 +34,8 @@ In this project, we analyze the environmental changes due to green extractivism 
 
 ## License
 
-This project is licensed under the terms of the [MIT License](/LICENSE.md)
+This project is licensed under the terms of the [CC-BY-4.0](/LICENSE.md)
 
 ## Citation
 
-Please [cite this project as described here](/CITATION.md).
+Please [cite this project as Emilinah Namaganda(2022),  Cabo Delgado environmental change - version 0.1.0. url: github.com/Emilinah/cabo-delgado-environmental-change](/CITATION.md).
