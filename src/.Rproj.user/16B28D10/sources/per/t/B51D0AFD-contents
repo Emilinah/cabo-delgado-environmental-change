@@ -1,0 +1,702 @@
+library(terra) #raster data
+library(Rcpp)
+library(sf) #vector data
+library(ggplot2) #visualizations
+library(rasterVis) #visualizations raster data, linked to ggplot2
+library(RColorBrewer)
+library(RStoolbox)
+library(raster)
+
+getwd()
+
+#To help avoiding exporting non-exportable objects by mistakes, 
+#which typically happens because a global variable is non-exportable, the future framework provides a mechanism for 
+#automatically detecting such objects.https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
+
+options(future.globals.onReference = "error")
+help("wrap", package = "terra")
+
+memory.limit(size=56000) #increase memory limit #if necessary
+memory.limit()
+
+#show temporary files. Can be done at any point. To remove these files if i run out of memory, make remove=TRUE
+tmpFiles(current=TRUE, orphan=TRUE, old=TRUE, remove=FALSE)
+
+Blma   <- vect(x = "C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Analysis/MOZ_adm/Balama/BalamaPosto.shp",
+             query = "SELECT POSTO FROM \"BalamaPosto\"") #Mar 22, changed this from BlmaMineArea which used 2 administrative posts to BalamaPosto - just Balama adm post.
+Twigg  <- vect(x = "C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Analysis/Mine_locations/Mines_BMA_37S.shp",
+              query = "SELECT Mine FROM \"Mines_BMA_37S\" WHERE FID = 0")
+MozCRS <- "+proj=utm +zone=37 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs" #https://spatialreference.org/ref/epsg/32737/proj4/
+
+# June 09, 2021 ----------------------------------------------------------
+
+list.files("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1",
+           pattern = ".TIF$")
+Blma2021_B1 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B1.TIF")
+Blma2021_B2 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B2.TIF")
+Blma2021_B3 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B3.TIF")
+Blma2021_B4 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B4.TIF")
+Blma2021_B5 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B5.TIF")
+Blma2021_B6 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B6.TIF")
+Blma2021_B7 <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_SR_B7.TIF")
+Blma2021_B17 <- c(Blma2021_B1,Blma2021_B2,Blma2021_B3,Blma2021_B4,Blma2021_B5,Blma2021_B6,Blma2021_B7)
+Blma2021_B17
+
+#cloud and shadow band #remove clouds before projecting because re-sampling modifies the cell values. I wouldn't want this to be based on cloud pixel information.
+#Pixel_QA band decoded in ArcGIS using the "Landsat QA ArcGIS Toolbox" "Decode QA" tool to get the pixel values to reclassify
+
+Blma2021_cldlyr <- rast("D:/PHD/Images/2021/LC08_L2SP_165069_20210609_20210615_02_T1/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF")
+Blma2021_cldlyr2 <- Blma2021_cldlyr
+Blma2021_cldmask <- classify(Blma2021_cldlyr2, 
+                             rbind(c(1,NA),
+                                   c(21762,NA),
+                                   c(21890,NA),
+                                   c(22018,NA),
+                                   c(22080,NA),
+                                   c(22280,NA),
+                                   c(23826,NA),
+                                   c(23888,NA),
+                                   c(24082,NA),
+                                   c(24144,NA)),
+                             othersNA=FALSE)
+
+#Mask cloud areas in BMA_image
+Blma2021_nclds <- mask(Blma2021_B17,Blma2021_cldmask)
+
+#reproject no cloud image to UTM WGS 37S
+
+Blma2021_nclds_proj <- project(Blma2021_nclds, MozCRS)
+names(Blma2021_nclds_proj) <- c("Blma2021_B1_37S.tif", 
+                                "Blma2021_B2_37S.tif", 
+                                "Blma2021_B3_37S.tif", 
+                                "Blma2021_B4_37S.tif", 
+                                "Blma2021_B5_37S.tif",
+                                "Blma2021_B6_37S.tif", 
+                                "Blma2021_B7_37S.tif")
+
+# crop the image using the Mines_localities.
+Blma2021_sub <- crop(Blma2021_nclds_proj, Blma, snap="in", mask=TRUE)
+plot(Blma2021_sub$Blma2021_B4_37S.tif)
+plot(Blma, add=TRUE)
+writeRaster(Blma2021_sub, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", "Blma2021_sub.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+?trim
+table(is.na(Blma2021_sub$Blma2021_B5_37S.tif[]))
+plot(Blma2021_sub$Blma2021_B5_37S.tif, colNA="red")
+plot(trim(Blma2021_sub$Blma2021_B5_37S.tif, value=NA), colNA="red")
+
+Blma2021_subB6 <- writeRaster(Blma2021_sub[[6]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2021_subB6.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2021_subB5 <- writeRaster(Blma2021_sub[[5]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2021_subB5.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2021_subB4 <- writeRaster(Blma2021_sub[[4]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2021_subB4.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2021_subB3 <- writeRaster(Blma2021_sub[[3]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2021_subB3.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2021_subB2 <- writeRaster(Blma2021_sub[[2]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2021_subB2.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+
+Blma2021_sub_mine <- crop(Blma2021_nclds_proj, Twigg, snap="in", mask=TRUE)
+plot(Blma2021_sub_mine$Blma2021_B4_37S.tif)
+plot(Twigg, add=TRUE)
+
+writeRaster(Blma2021_sub_mine, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Blma2021_sub_mine.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+Twigg2021_subB5 <- writeRaster(Blma2021_sub_mine[[5]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Twigg2021_subB5.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Twigg2021_subB4 <- writeRaster(Blma2021_sub_mine[[4]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Twigg2021_subB4.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Twigg2021_subB3 <- writeRaster(Blma2021_sub_mine[[3]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Twigg2021_subB3.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Twigg2021_subB2 <- writeRaster(Blma2021_sub_mine[[2]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Twigg2021_subB2.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+
+#Calculate the slope and aspect of the SRTM DEM. Calculated in ArcMap - majority of slope found between 0-10% percent rise
+#which is generally considered a flat to moderate slope. Therefore, no need for topographic correction.
+#note regarding resampling: As for linear and polynomial, they make better guesses at intermediary values given a tendency (linear uses local 
+#tendency, whereas polynomial take into account the tendency of a larger area), which likely produces more correct values overall, but can also 
+#distort the shape of your terrain (everything will look more continuous, even when it's not). So for continuous data, i'm generally using bilinear
+#and nearest neighbor for categorical data.
+#Warning message: [merge] rasters did not align and were resampled. Not sure what technique was used 
+
+Blma2021_sub_RGB <- c(Blma2021_sub[[4]], Blma2021_sub[[3]], Blma2021_sub[[2]])
+Blma2021_sub_NRG <- c(Blma2021_sub[[5]], Blma2021_sub[[4]], Blma2021_sub[[3]])
+par(mfrow = c(1,2))
+plotRGB(Blma2021_sub_RGB, r = 1, g = 2, b = 3, stretch = "lin")
+plotRGB(Blma2021_sub_NRG, r = 1, g = 2, b = 3, stretch = "lin")
+plot(Blma, add=TRUE)
+
+#calculate indices first without relative correction and later try again with relative correction -----------
+#NDVI (NIR - Red) / (NIR + Red)
+
+Blma2021_ndvi <- (Blma2021_sub[[5]]-Blma2021_sub[[4]])/(Blma2021_sub[[5]]+Blma2021_sub[[4]])
+Blma2021_ndvi
+plot(Blma2021_ndvi)
+Blma2021_ndvi_Twigg <- crop(Blma2021_ndvi, Twigg, snap="in", mask=TRUE)
+Blma2021_ndvi_Twigg
+global(Blma2021_ndvi_Twigg, fun=quantile, na.rm=TRUE)
+global(Blma2021_ndvi_Twigg, fun=mean, na.rm=TRUE)
+
+#NDBI (SWIR - NIR) / (SWIR + NIR)
+
+Blma2021_ndbi <- (Blma2021_sub[[6]]-Blma2021_sub[[5]])/(Blma2021_sub[[6]]+Blma2021_sub[[5]])
+Blma2021_ndbi
+plot(Blma2021_ndbi)
+Blma2021_ndbi_Twigg <- crop(Blma2021_ndbi, Twigg, snap="in", mask=TRUE)
+Blma2021_ndbi_Twigg
+global(Blma2020_ndbi_Twigg, fun=quantile, na.rm=TRUE)
+global(Blma2020_ndbi_Twigg, fun=mean, na.rm=TRUE)
+
+##########################################################################################################################
+
+# May 24, 2015
+
+list.files("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1",
+           pattern = ".TIF$")
+Blma2015May_B1 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B1.TIF")
+Blma2015May_B2 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B2.TIF")
+Blma2015May_B3 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B3.TIF")
+Blma2015May_B4 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B4.TIF")
+Blma2015May_B5 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B5.TIF")
+Blma2015May_B6 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B6.TIF")
+Blma2015May_B7 <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_SR_B7.TIF")
+BlmaM2015_B17 <- c(Blma2015May_B1,Blma2015May_B2,Blma2015May_B3,Blma2015May_B4,Blma2015May_B5,Blma2015May_B6,Blma2015May_B7)
+BlmaM2015_B17
+
+#cloud and shadow band #remove clouds before projecting because re-sampling modifies the cell values. I wouldn't want this to be based on cloud pixel information.
+#Pixel_QA band decoded in ArcGIS using the "Landsat QA ArcGIS Toolbox" "Decode QA" tool to get the pixel values to reclassify
+
+BlmaM2015_cldlyr <- rast("D:/PHD/Images/2015/LC08_L2SP_165069_20150524_20200909_02_T1/LC08_L2SP_165069_20150524_20200909_02_T1_QA_PIXEL.TIF")
+BlmaM2015_cldlyr2 <- BlmaM2015_cldlyr
+BlmaM2015_cldmask <- classify(BlmaM2015_cldlyr2, 
+                              rbind(c(1,NA),
+                                    c(21762,NA),
+                                    c(22018,NA),
+                                    c(22080,NA),
+                                    c(22280,NA),
+                                    c(23888,NA)),
+                             othersNA=FALSE)
+plot(BlmaM2015_cldmask)
+
+#Mask cloud areas in BMA_image
+BlmaM2015_nclds <- mask(BlmaM2015_B17,BlmaM2015_cldmask)
+writeRaster(BlmaM2015_nclds, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                "BlmaM2015_nclds.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+
+#reproject no cloud image to UTM WGS 37S
+
+BlmaM2015_nclds_proj <- project(BlmaM2015_nclds, MozCRS)
+names(BlmaM2015_nclds_proj) <- c("BlmaM2015_B1_37S.tif", 
+                                 "BlmaM2015_B2_37S.tif", 
+                                 "BlmaM2015_B3_37S.tif", 
+                                 "BlmaM2015_B4_37S.tif", 
+                                 "BlmaM2015_B5_37S.tif",
+                                "BlmaM2015_B6_37S.tif", 
+                                "BlmaM2015_B7_37S.tif")
+writeRaster(BlmaM2015_nclds_proj,
+            filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                               "BlmaM2015_proj.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+
+# crop the image using the Mines_localities.
+BlmaM2015_sub <- crop(BlmaM2015_nclds_proj, Blma, snap="in", mask=TRUE)
+plot(BlmaM2015_sub$BlmaM2015_B4_37S.tif)
+plot(Blma, add=TRUE)
+writeRaster(BlmaM2015_sub, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                              "BlmaM2015_sub.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+BlmaM2015_subB6 <- writeRaster(BlmaM2015_sub[[6]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "BlmaM2015_subB6.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+BlmaM2015_subB5 <- writeRaster(BlmaM2015_sub[[5]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "BlmaM2015_subB5.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+BlmaM2015_subB4 <- writeRaster(BlmaM2015_sub[[4]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "BlmaM2015_subB4.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+BlmaM2015_subB3 <- writeRaster(BlmaM2015_sub[[3]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "BlmaM2015_subB3.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+BlmaM2015_subB2 <- writeRaster(BlmaM2015_sub[[2]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "BlmaM2015_subB2.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+
+BlmaM2015_sub_mine <- crop(BlmaM2015_nclds_proj, Twigg, snap="in", mask=TRUE)
+plot(BlmaM2015_sub_mine$BlmaM2015_B4_37S.tif)
+plot(Twigg, add=TRUE)
+
+writeRaster(BlmaM2015_sub_mine, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                   "BlmaM2015_sub_mine.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+TwiggM2015_subB5 <- writeRaster(BlmaM2015_sub_mine[[5]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "TwiggM2015_subB5.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+TwiggM2015_subB4 <- writeRaster(BlmaM2015_sub_mine[[4]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "TwiggM2015_subB4.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+TwiggM2015_subB3 <- writeRaster(BlmaM2015_sub_mine[[3]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "TwiggM2015_subB3.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+TwiggM2015_subB2 <- writeRaster(BlmaM2015_sub_mine[[2]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "TwiggM2015_subB2.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+
+#Calculate the slope and aspect of the SRTM DEM. Calculated in ArcMap - majority of slope found between 0-10% percent rise
+#which is generally considered a flat to moderate slope. Therefore, no need for topographic correction.
+#note regarding resampling: As for linear and polynomial, they make better guesses at intermediary values given a tendency (linear uses local 
+#tendency, whereas polynomial take into account the tendency of a larger area), which likely produces more correct values overall, but can also 
+#distort the shape of your terrain (everything will look more continuous, even when it's not). So for continuous data, i'm generally using bilinear
+#and nearest neighbor for categorical data.
+#Warning message: [merge] rasters did not align and were resampled. Not sure what technique was used 
+
+BlmaM2015_sub_RGB <- c(BlmaM2015_sub[[4]], BlmaM2015_sub[[3]], BlmaM2015_sub[[2]])
+BlmaM2015_sub_NRG <- c(BlmaM2015_sub[[5]], BlmaM2015_sub[[4]], BlmaM2015_sub[[3]])
+par(mfrow = c(1,2))
+plotRGB(BlmaM2015_sub_RGB, r = 1, g = 2, b = 3, stretch = "lin")
+plotRGB(BlmaM2015_sub_NRG, r = 1, g = 2, b = 3, stretch = "lin")
+plot(Blma, add=TRUE)
+
+#calculate indices first without relative correction and later try again with relative correction
+#From what I could gather from different papers, relative correction is usually done on TOA or DN products. SR is already to fine a correction.
+#Registration is also not necessary as all the images are perfectly aligned.
+
+#NDVI (NIR - Red) / (NIR + Red)
+
+BlmaM2015_ndvi <- (BlmaM2015_sub[[5]]-BlmaM2015_sub[[4]])/(BlmaM2015_sub[[5]]+BlmaM2015_sub[[4]])
+BlmaM2015_ndvi
+plot(BlmaM2015_ndvi)
+BlmaM2015_ndvi_Twigg <- crop(BlmaM2015_ndvi, Twigg, snap="in", mask=TRUE)
+BlmaM2015_ndvi_Twigg
+global(BlmaM2015_ndvi_Twigg, fun=quantile, na.rm=TRUE)
+
+#NDBI (Normalized Difference Built-up Index)
+
+#NDBI = (SWIR-NIR)/(SWIR+NIR)
+BlmaM2015_ndbi <- (BlmaM2015_sub[[6]]-BlmaM2015_sub[[5]])/(BlmaM2015_sub[[6]]+BlmaM2015_sub[[5]])
+BlmaM2015_ndbi
+plot(BlmaM2015_ndbi)
+BlmaM2015_ndbi_Twigg <- crop(BlmaM2015_ndbi, Twigg, snap="in", mask=TRUE)
+BlmaM2015_ndbi_Twigg
+global(BlmaM2015_ndbi_Twigg, fun=quantile, na.rm=TRUE)
+
+#Image differencing. 
+#Red band image differencing is more realiable than NDVI in Arid or semi- arid environments according to Young. Visible change.
+
+BlmaM_diffB4 <- Blma2021_sub[[4]]- BlmaM2015_sub[[4]]
+BlmaM_diffB4
+plot(BlmaM_diffB4)
+TwiggM_diffB4 <- Blma2021_sub_mine[[4]]- BlmaM2015_sub_mine[[4]]
+TwiggM_diffB4
+plot(TwiggM_diffB4)
+TwiggM_diffrgb <- Blma2021_sub_RGB - BlmaM2015_sub_RGB
+TwiggM_diffrgb
+plot(TwiggM_diffrgb)
+TwiggM_diffnrg <- Blma2021_sub_NRG - BlmaM2015_sub_NRG
+TwiggM_diffnrg
+plot(TwiggM_diffnrg)
+
+#Band ratioing #results similar to image differencing using band 4 - I can see where the change is occurring but not its magnitude. 
+#Also difficult to set a threshold for change/no change (tried this in ArcGIS)
+
+BlmaM_ratB4 <- Blma2021_sub[[4]]/BlmaM2015_sub[[4]]
+BlmaM_ratB4
+plot(BlmaM_ratB4)
+TwiggM_ratB4 <- Blma2021_sub_mine[[4]]/BlmaM2015_sub_mine[[4]]
+TwiggM_ratB4
+plot(TwiggM_ratB4)
+
+#Try PCA
+#The first method is adding two image dates to a single file, and the second methods is subtracting the 
+#second image date from the corresponding image of the first date after performing PCA separately.
+#I will do the second method. Don't understand how the first one works.
+
+#rasterPCA only accepts rasterbricks or rasterstacks
+
+Twigg2021_brick <- brick(Blma2021_sub_mine)
+TwiggM2015_brick <- brick(BlmaM2015_sub_mine)
+TwiggM2015_brick
+
+#maybe try running again with request for different number of components. According to Young, standardized PCA is more
+#accurate especially when the bands/sensors used have different units (or sth like that).
+
+Twigg2021_PCA <- rasterPCA(Twigg2021_brick, spca = TRUE)
+TwiggM2015_PCA <- rasterPCA(TwiggM2015_brick, spca = TRUE)
+Twigg2021_PCA
+TwiggM2015_PCA
+plot(Twigg2021_PCA$map)
+plotRGB(Twigg2021_PCA$map, r=4, b=3, g=2, stretch="lin")
+plotRGB(Twigg2021_PCA$map, r=1, b=2, g=3, stretch="lin")
+Twigg2021_PCA$model
+Twigg2021_PCA$model$loadings
+
+###################################################################################################################################################################
+
+# June 24, 2009
+
+list.files("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1",
+           pattern = ".TIF$")
+Blma2009_B1 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B1.TIF")
+Blma2009_B2 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B2.TIF")
+Blma2009_B3 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B3.TIF")
+Blma2009_B4 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B4.TIF")
+Blma2009_B5 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B5.TIF")
+Blma2009_B6 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_ST_B6.TIF") #Note unlike Landsat 8, Band 6 is ST instead of SR.
+Blma2009_B7 <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_SR_B7.TIF")
+Blma2009_B17 <- c(Blma2009_B1,Blma2009_B2,Blma2009_B3,Blma2009_B4,Blma2009_B5,Blma2009_B6,Blma2009_B7)
+Blma2009_B17
+
+#cloud and shadow band #remove clouds before projecting because re-sampling modifies the cell values. I wouldn't want this to be based on cloud pixel information.
+#Pixel_QA band decoded in ArcGIS using the "Landsat QA ArcGIS Toolbox" "Decode QA" tool to get the pixel values to reclassify
+
+Blma2009_cldlyr <- rast("D:/PHD/Images/2009/LT05_L2SP_165069_20090624_20200827_02_T1/LT05_L2SP_165069_20090624_20200827_02_T1_QA_PIXEL.TIF")
+Blma2009_cldlyr2 <- Blma2009_cldlyr
+Blma2009_cldmask <- classify(Blma2009_cldlyr2, 
+                             rbind(c(1,NA),
+                                   c(5442,NA),
+                                   c(5506,NA),
+                                   c(5696,NA),
+                                   c(5698,NA),
+                                   c(5896,NA), 
+                                   c(7440,NA), 
+                                   c(7442,NA), 
+                                   c(7696,NA), 
+                                   c(7698,NA), 
+                                   c(13602,NA)),
+                              othersNA=FALSE)
+plot(Blma2009_cldmask)
+
+#Mask cloud areas in BMA_image
+Blma2009_nclds <- mask(Blma2009_B17,Blma2009_cldmask)
+
+#reproject no cloud image to UTM WGS 37S
+
+Blma2009_nclds_proj <- project(Blma2009_nclds, MozCRS)
+names(Blma2009_nclds_proj) <- c("Blma2009_B1_37S.tif", 
+                                "Blma2009_B2_37S.tif", 
+                                "Blma2009_B3_37S.tif", 
+                                "Blma2009_B4_37S.tif", 
+                                "Blma2009_B5_37S.tif",
+                                "Blma2009_B6_37S.tif", 
+                                "Blma2009_B7_37S.tif")
+
+# crop the image using the Mines_localities.
+Blma2009_sub <- crop(Blma2009_nclds_proj, Blma, snap="in", mask=TRUE)
+plot(Blma2009_sub$Blma2009_B4_37S.tif)
+plot(Blma, add=TRUE)
+writeRaster(Blma2009_sub, filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                             "Blma2009_sub.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+Blma2009_subB5 <- writeRaster(Blma2009_sub[[5]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2009_subB5.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2009_subB4 <- writeRaster(Blma2009_sub[[4]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Blma2009_subB4.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Blma2009_subB3 <- writeRaster(Blma2009_sub[[3]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Blma2009_subB3.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Blma2009_subB2 <- writeRaster(Blma2009_sub[[2]],
+                               filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                  "Blma2009_subB2.tif"),
+                               overwrite=TRUE,
+                               filetype="GTiff")
+Blma2009_subB1 <- writeRaster(Blma2009_sub[[1]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2009_subB1.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+
+Blma2009_sub_mine <- crop(Blma2009_nclds_proj, Twigg, snap="in", mask=TRUE)
+plot(Blma2009_sub_mine$Blma2009_B4_37S.tif)
+plot(Twigg, add=TRUE)
+
+
+
+#Calculate the slope and aspect of the SRTM DEM. Calculated in ArcMap - majority of slope found between 0-10% percent rise
+#which is generally considered a flat to moderate slope. Therefore, no need for topographic correction.
+#note regarding resampling: As for linear and polynomial, they make better guesses at intermediary values given a tendency 
+#(linear uses local 
+#tendency, whereas polynomial take into account the tendency of a larger area), which likely produces more correct values 
+  #overall, but can also 
+#distort the shape of your terrain (everything will look more continuous, even when it's not). So for continuous data, i'm 
+  #generally using bilinear
+#and nearest neighbor for categorical data.
+#Warning message: [merge] rasters did not align and were resampled. Not sure what technique was used 
+
+Blma2009_sub_RGB <- c(Blma2009_sub[[3]], Blma2009_sub[[2]], Blma2009_sub[[1]])
+Blma2009_sub_NRG <- c(Blma2009_sub[[4]], Blma2009_sub[[3]], Blma2009_sub[[2]])
+par(mfrow = c(1,2))
+plotRGB(Blma2009_sub_RGB, r = 1, g = 2, b = 3, stretch = "lin")
+plotRGB(Blma2009_sub_NRG, r = 1, g = 2, b = 3, stretch = "lin")
+plot(Twigg, add=TRUE)
+
+
+
+###################################################################################################################################################################
+
+# June 03, 2010
+
+list.files("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1",
+           pattern = ".TIF$")
+Blma2010_B1 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B1.TIF")
+Blma2010_B2 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B2.TIF")
+Blma2010_B3 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B3.TIF")
+Blma2010_B4 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B4.TIF")
+Blma2010_B5 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B5.TIF")
+Blma2010_B6 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_ST_B6.TIF") #Note unlike Landsat 8, Band 6 is ST instead of SR.
+Blma2010_B7 <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_SR_B7.TIF")
+Blma2010_B17 <- c(Blma2010_B1,Blma2010_B2,Blma2010_B3,Blma2010_B4,Blma2010_B5,Blma2010_B6,Blma2010_B7)
+Blma2010_B17
+
+#cloud and shadow band #remove clouds before projecting because re-sampling modifies the cell values. I wouldn't want this to be based on cloud pixel information.
+#Pixel_QA band decoded in ArcGIS using the "Landsat QA ArcGIS Toolbox" "Decode QA" tool to get the pixel values to reclassify
+
+Blma2010_cldlyr <- rast("D:/PHD/Images/2010/LE07_L2SP_165069_20100603_20200911_02_T1/LE07_L2SP_165069_20100603_20200911_02_T1_QA_PIXEL.TIF")
+Blma2010_cldlyr2 <- Blma2010_cldlyr
+Blma2010_cldmask <- classify(Blma2010_cldlyr2, 
+                             rbind(c(1,NA),
+                                   c(5442,NA),
+                                   c(5506,NA),
+                                   c(5696,NA),
+                                   c(5698,NA),
+                                   c(5896,NA), 
+                                   c(7440,NA), 
+                                   c(7442,NA), 
+                                   c(7696,NA), 
+                                   c(7698,NA)),
+                             othersNA=FALSE)
+plot(Blma2010_cldmask)
+
+#Mask cloud areas in BMA_image
+Blma2010_nclds <- mask(Blma2010_B17,Blma2010_cldmask)
+
+#reproject no cloud image to UTM WGS 37S
+
+Blma2010_nclds_proj <- project(Blma2010_nclds, MozCRS)
+names(Blma2010_nclds_proj) <- c("Blma2010_B1_37S.tif", 
+                                "Blma2010_B2_37S.tif", 
+                                "Blma2010_B3_37S.tif", 
+                                "Blma2010_B4_37S.tif", 
+                                "Blma2010_B5_37S.tif",
+                                "Blma2010_B6_37S.tif", 
+                                "Blma2010_B7_37S.tif")
+
+Blma2010_nclds_B7 <- writeRaster(Blma2010_nclds_proj[[7]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B7.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B6 <- writeRaster(Blma2010_nclds_proj[[6]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B6.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B5 <- writeRaster(Blma2010_nclds_proj[[5]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B5.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B4 <- writeRaster(Blma2010_nclds_proj[[4]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B4.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B3 <- writeRaster(Blma2010_nclds_proj[[3]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B3.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B2 <- writeRaster(Blma2010_nclds_proj[[2]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B2.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2010_nclds_B1 <- writeRaster(Blma2010_nclds_proj[[1]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2010_nclds_B1.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+
+# crop the image using the Mines_localities.
+Blma2010_sub <- crop(Blma2010_nclds_proj, Blma, snap="in", mask=TRUE)
+
+Blma2010_subB7 <- writeRaster(Blma2010_sub[[7]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB7.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB6 <- writeRaster(Blma2010_sub[[6]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB6.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB5 <- writeRaster(Blma2010_sub[[5]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB5.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB4 <- writeRaster(Blma2010_sub[[4]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB4.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB3 <- writeRaster(Blma2010_sub[[3]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB3.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB2 <- writeRaster(Blma2010_sub[[2]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB2.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+Blma2010_subB1 <- writeRaster(Blma2010_sub[[1]],
+                                 filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                    "Blma2010_subB1.tif"),
+                                 overwrite=TRUE,
+                                 filetype="GTiff")
+
+###################################################################################################################################################################
+
+# June 03, 2007 - Tier 2 (just trying)
+
+list.files("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2",
+           pattern = ".TIF$")
+Blma2007_B1 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B1.TIF")
+Blma2007_B2 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B2.TIF")
+Blma2007_B3 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B3.TIF")
+Blma2007_B4 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B4.TIF")
+Blma2007_B5 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B5.TIF")
+Blma2007_B6 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_ST_B6.TIF") #Note unlike Landsat 8, Band 6 is ST instead of SR.
+Blma2007_B7 <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_SR_B7.TIF")
+Blma2007_B17 <- c(Blma2007_B1,Blma2007_B2,Blma2007_B3,Blma2007_B4,Blma2007_B5,Blma2007_B6,Blma2007_B7)
+Blma2007_B17
+
+#cloud and shadow band #remove clouds before projecting because re-sampling modifies the cell values. I wouldn't want this to be based on cloud pixel information.
+#Pixel_QA band decoded in ArcGIS using the "Landsat QA ArcGIS Toolbox" "Decode QA" tool to get the pixel values to reclassify
+
+Blma2007_cldlyr <- rast("D:/PHD/Images/2007/LT05_L2SP_165069_20070603_20200830_02_T2/LT05_L2SP_165069_20070603_20200830_02_T2_QA_PIXEL.TIF")
+Blma2007_cldlyr2 <- Blma2007_cldlyr
+Blma2007_cldmask <- classify(Blma2007_cldlyr2, rbind(c(1,NA),
+                                                     c(5442,NA),
+                                                     c(5506,NA),
+                                                     c(5696,NA),
+                                                     c(5698,NA),
+                                                     c(5896,NA), 
+                                                     c(7440,NA), 
+                                                     c(7442,NA), 
+                                                     c(7696,NA), 
+                                                     c(7698,NA),
+                                                     c(13600,NA),
+                                                     c(13602,NA)),
+                             othersNA=FALSE)
+plot(Blma2007_cldmask)
+
+#Mask cloud areas in BMA_image
+Blma2007_nclds <- mask(Blma2007_B17,Blma2007_cldmask)
+
+#reproject no cloud image to UTM WGS 37S
+
+Blma2007_nclds_proj <- project(Blma2007_nclds, MozCRS)
+names(Blma2007_nclds_proj) <- c("Blma2007_B1_37S.tif", 
+                                "Blma2007_B2_37S.tif", 
+                                "Blma2007_B3_37S.tif", 
+                                "Blma2007_B4_37S.tif", 
+                                "Blma2007_B5_37S.tif",
+                                "Blma2007_B6_37S.tif", 
+                                "Blma2007_B7_37S.tif")
+
+# crop the image using the Mines_localities.
+Blma2007_sub <- crop(Blma2007_nclds_proj, Blma, snap="in", mask=TRUE)
+plot(Blma2007_sub$Blma2007_B4_37S.tif)
+writeRaster(Blma2007_sub,
+            filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                               "Blma2007_sub.tif"),
+            overwrite=TRUE,
+            filetype="GTiff")
+
+Blma2007_subB5 <- writeRaster(Blma2007_sub[[5]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2007_subB5.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2007_subB4 <- writeRaster(Blma2007_sub[[4]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2007_subB4.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2007_subB3 <- writeRaster(Blma2007_sub[[3]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2007_subB3.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2007_subB2 <- writeRaster(Blma2007_sub[[2]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2007_subB2.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")
+Blma2007_subB1 <- writeRaster(Blma2007_sub[[1]],
+                              filename=file.path("C:/Users/Namag001/OneDrive - Universiteit Utrecht/PhD/Spatial/Rfiles/lulc2020", 
+                                                 "Blma2007_subB1.tif"),
+                              overwrite=TRUE,
+                              filetype="GTiff")

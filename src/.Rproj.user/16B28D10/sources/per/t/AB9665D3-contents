@@ -1,0 +1,117 @@
+---
+title: "Land use land cover change due to green extractivism in Mozambique"
+author: "Emilinah Namaganda"
+date: "7/18/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Using Rmarkdown, open access techniques, and remote sensing data is useful for
+monitoring land use land cover change in general in low income areas. It is also
+useful in areas where corruption is rife or where transparency in the extractive
+industry is rare as anyone can double-check reports from government, companies, 
+or any other stakeholders. A project to monitor activities can be opened up
+online, verified, and updated by anyone.
+
+Geo-politically, open access platforms also allow Africans or people in other low
+income countries to use these platforms to develop their own resources that are
+best for their needs. E.g. Gitlab a hosting site for open access project is itself
+hosted on a free and open source platform.
+
+If done, earlier in the project, it is
+a useful baseline and change tool. This is one of the benefits of this study 
+which is being conducted at the beginning of natural gas and graphite extraction 
+activities in Cabo Delgado, Mozambique.
+
+With google earth engine (GEE) you need a stable internet connection. With R, 
+you can make local copies of online repositories for later local analysis. 
+This may be helpful for analysis in areas with scanty internet connectivity.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the necessary libraries
+
+```{r }
+library(terra) #raster data
+library(sf) #vector data
+getwd()
+Sys.getenv()
+```
+
+## Preprocessing Balama images 2021
+
+Users without administrative boundary data can use open access data from the 
+GRID3 DATA HUB: https://data.grid3.org/
+
+Mine areas can be constructed from geolocations from the Mozambique Mining
+Cadastre Map Portal: https://portals.landfolio.com/mozambique/en/
+
+Landsat image data were downloaded from the USGS website:
+https://earthexplorer.usgs.gov/
+
+```{r}
+
+# loading relevant image bands -----------
+
+bands17 <- function(images_path){
+  bands17 <- list.files(images_path,
+                           pattern = glob2rx("*B*"), 
+                           full.names = TRUE)
+  bands17 <- rast(bands17[1:7])
+  return(bands17)
+}
+
+blma2021_b17 <- bands17("~/data/raw/images/2021/0609")
+blma2021_b17
+
+
+# removing cloud cover pixels, re-projecting to correct CRS, crop to AOI ------
+
+moz_crs <- "+init=EPSG:32737"  
+blma    <- vect(x = "~/balama/aoi/blma.shp",
+             query = "SELECT POSTO FROM \"blma\"")
+syrah   <- vect(x = "~/balama/aoi/syrah.shp",
+              query = "SELECT Mine FROM \"syrah\" WHERE FID = 0")
+syrah_buf <- buffer(syrah, 9000)
+
+
+blma2021_qaband <- rast(
+  "~/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF")
+activeCat(blma2021_qaband) <- 0
+plot(blma2021_qaband)
+
+# qa band is decoded in arcgis, using decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from the usgs landsat website.
+
+aoi <- function(QA_band, bands17, mine_area) {
+  cloudsmask     <- classify(QA_band, 
+                         rbind(c(21824, 21824), c(21952, 21952)),
+                         othersNA = TRUE) 
+  b17_clear      <- mask(bands17, cloudsmask)
+  b17_clear_proj <- project(b17_clear, moz_crs)
+  aoi_mine_area   <- crop(b17_clear_proj, mine_area, snap="near", mask=TRUE)
+  
+  return(aoi_mine_area)
+}
+
+
+blma2021 <- aoi(blma2021_qaband, blma2021_b17, syrah_buf)
+names(blma2021) <- gsub(pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
+                                         replacement = "blma2021",
+                                         names(blma2021))
+plot(blma2021$blma2021_B4)
+plot(syrah, add = TRUE) 
+
+```
+
+## classifying balama images
+
+```{r}
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent
+printing of the R code that generated the plot.
