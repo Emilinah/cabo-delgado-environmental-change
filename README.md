@@ -33,7 +33,9 @@ In this project, we analyze the environmental changes due to green extractivism 
 ### Software requirements
 
 R version 4.2.1
+
 RStudio version 2021.09.1+372
+
 ArcMap version 10.8.1
 
 ### Raw data sources
