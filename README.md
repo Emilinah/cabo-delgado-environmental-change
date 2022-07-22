@@ -30,7 +30,9 @@ In this project, we analyze the environmental changes due to green extractivism 
 └── src                <- Source code for this project (HW)
 
 ```
+### Data sources
 
+All the Landsat images were downloaded from the USGS Earth Explorer website: https://earthexplorer.usgs.gov/. The path and row names were: Balama (xx), Ancuabe (xx), and Palma (xx). The QA_PIXEL bands were decoded in arcgis, using the decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from earth explorer: https://www.usgs.gov/landsat-missions/landsat-quality-assessment-arcgis-toolbox.
 
 ## License
 
