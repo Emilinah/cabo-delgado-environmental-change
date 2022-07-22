@@ -30,7 +30,13 @@ In this project, we analyze the environmental changes due to green extractivism 
 └── src                <- Source code for this project (HW)
 
 ```
-### Data sources
+### Software requirements
+
+R version 4.2.1
+RStudio version 2021.09.1+372
+ArcMap version 10.8.1
+
+### Raw data sources
 
 All the Landsat images were downloaded from the USGS Earth Explorer website: https://earthexplorer.usgs.gov/. 
 The path and row names were: Balama (xx), Ancuabe (xx), and Palma (xx). The QA_PIXEL bands were decoded in arcgis, 
@@ -50,3 +56,7 @@ This project is licensed under the terms of the [CC-BY-4.0](/LICENSE.md)
 ## Citation
 
 Please [cite this project as Emilinah Namaganda(2022), Cabo Delgado environmental change - version 0.1.0. url:github.com/Emilinah/cabo-delgado-environmental-change](/CITATION.md).
+
+## Contact
+
+To get in touch about this project or a related topic, contact Emilinah Namaganda at e.namaganda@uu.nl
