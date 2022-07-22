@@ -1,5 +1,7 @@
 # Cabo Delgado environmental change
 
+Binder - online view of project: https://mybinder.org/v2/gh/Emilinah/cabo-delgado-environmental-change/master
+
 Version 0.1.0
 
 In this project, we analyze the environmental changes due to green extractivism in Cabo Delgado province, Mozambique.
