@@ -35,8 +35,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Loading the necessary libraries
 
 ```{r }
-library(terra) #raster data
-library(sf) #vector data
+
+library(terra) # raster data
+library(sf) # vector data
+library("lintr")
+
 ```
 
 ## Preprocessing Balama images 2021
@@ -54,10 +57,12 @@ https://earthexplorer.usgs.gov/
 
 # loading relevant image bands -----------
 
-bands17 <- function(images_path){
+
+bands17 <- function(images_path) {
   bands17 <- list.files(images_path,
-                           pattern = glob2rx("*B*"), 
-                           full.names = TRUE)
+    pattern = glob2rx("*B*"),
+    full.names = TRUE
+  )
   bands17 <- rast(bands17[1:7])
   return(bands17)
 }
@@ -68,47 +73,44 @@ blma2021_b17
 
 # removing cloud cover pixels, re-projecting to correct CRS, crop to AOI ------
 
-moz_crs <- "+init=EPSG:32737"  
-blma    <- vect(x = "~/data/raw/balama/blma.shp",
-             query = "SELECT POSTO FROM \"blma\"")
-syrah   <- vect(x = "~/data/raw/balama/syrah.shp",
-              query = "SELECT Mine FROM \"syrah\" WHERE FID = 0")
+moz_crs <- "+init=EPSG:32737"
+blma <- vect(
+  x = "~/data/raw/balama/blma.shp",
+  query = "SELECT POSTO FROM \"blma\""
+)
+syrah <- vect(
+  x = "~/data/raw/balama/syrah.shp",
+  query = "SELECT Mine FROM \"syrah\" WHERE FID = 0"
+)
 syrah_buf <- buffer(syrah, 9000)
 
 
-blma2021_qaband <- rast(
-  "~/data/raw/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF")
-activeCat(blma2021_qaband) <- 0
-plot(blma2021_qaband)
+blma2021_qa <- rast(
+  "~/data/raw/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF"
+)
+activeCat(blma2021_qa) <- 0
+plot(blma2021_qa)
 
-# qa band is decoded in arcgis, using decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from the usgs landsat website.
 
-aoi <- function(QA_band, bands17, mine_area) {
-  cloudsmask     <- classify(QA_band, 
-                         rbind(c(21824, 21824), c(21952, 21952)),
-                         othersNA = TRUE) 
-  b17_clear      <- mask(bands17, cloudsmask)
+aoi <- function(QA_band, bands_17, mine_area) {
+  cloudsmask <- classify(QA_band, rbind(c(21824, 21824), c(21952, 21952)),
+    othersNA = TRUE
+  )
+  b17_clear <- mask(bands17, cloudsmask)
   b17_clear_proj <- project(b17_clear, moz_crs)
-  aoi_mine_area   <- crop(b17_clear_proj, mine_area, snap="near", mask=TRUE)
-  
+  aoi_mine_area <- crop(b17_clear_proj, mine_area, snap = "near", mask = TRUE)
   return(aoi_mine_area)
 }
 
-blma2021 <- aoi(blma2021_qaband, blma2021_b17, syrah_buf)
-names(blma2021) <- gsub(pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
-                                         replacement = "blma2021",
-                                         names(blma2021))
+blma2021 <- aoi(blma2021_qa, blma2021_b17, syrah_buf)
+names(blma2021) <- gsub(
+  pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
+  replacement = "blma2021",
+  names(blma2021))
+
 plot(blma2021$blma2021_B4)
-plot(syrah, add = TRUE) 
+plot(syrah, add = TRUE)
 
 ```
-
-## classifying balama images
-
-```{r}
-
-```
-
-
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent
 printing of the R code that generated the plot.
