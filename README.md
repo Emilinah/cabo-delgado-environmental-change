@@ -32,7 +32,16 @@ In this project, we analyze the environmental changes due to green extractivism 
 ```
 ### Data sources
 
-All the Landsat images were downloaded from the USGS Earth Explorer website: https://earthexplorer.usgs.gov/. The path and row names were: Balama (xx), Ancuabe (xx), and Palma (xx). The QA_PIXEL bands were decoded in arcgis, using the decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from earth explorer: https://www.usgs.gov/landsat-missions/landsat-quality-assessment-arcgis-toolbox.
+All the Landsat images were downloaded from the USGS Earth Explorer website: https://earthexplorer.usgs.gov/. 
+The path and row names were: Balama (xx), Ancuabe (xx), and Palma (xx). The QA_PIXEL bands were decoded in arcgis, 
+using the decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from earth explorer:
+https://www.usgs.gov/landsat-missions/landsat-quality-assessment-arcgis-toolbox.
+
+Users without administrative boundary data can use open access data from the 
+GRID3 DATA HUB: https://data.grid3.org/
+
+Mine areas can be constructed from the gps coordinates of the mine concession areas from the Mozambique Mining
+Cadastre Map Portal: https://portals.landfolio.com/mozambique/en/
 
 ## License
 
@@ -40,4 +49,4 @@ This project is licensed under the terms of the [CC-BY-4.0](/LICENSE.md)
 
 ## Citation
 
-Please [cite this project as Emilinah Namaganda(2022),  Cabo Delgado environmental change - version 0.1.0. url: github.com/Emilinah/cabo-delgado-environmental-change](/CITATION.md).
+Please [cite this project as Emilinah Namaganda(2022), Cabo Delgado environmental change - version 0.1.0. url:github.com/Emilinah/cabo-delgado-environmental-change](/CITATION.md).
