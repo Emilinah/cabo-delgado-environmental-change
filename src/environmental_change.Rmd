@@ -7,27 +7,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-Using Rmarkdown, open access techniques, and remote sensing data is useful for
-monitoring land use land cover change in general in low income areas. It is also
-useful in areas where corruption is rife or where transparency in the extractive
-industry is rare as anyone can double-check reports from government, companies, 
-or any other stakeholders. A project to monitor activities can be opened up
-online, verified, and updated by anyone.
-
-Geo-politically, open access platforms also allow Africans or people in other low
-income countries to use these platforms to develop their own resources that are
-best for their needs. E.g. Gitlab a hosting site for open access project is itself
-hosted on a free and open source platform.
-
-If done, earlier in the project, it is
-a useful baseline and change tool. This is one of the benefits of this study 
-which is being conducted at the beginning of natural gas and graphite extraction 
-activities in Cabo Delgado, Mozambique.
-
-With google earth engine (GEE) you need a stable internet connection. With R, 
-you can make local copies of online repositories for later local analysis. 
-This may be helpful for analysis in areas with scanty internet connectivity.
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -38,20 +17,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(terra) # raster data
 library(sf) # vector data
-library("lintr")
+library("lintr") #organize writing style
 
 ```
 
 ## Preprocessing Balama images 2021
-
-Users without administrative boundary data can use open access data from the 
-GRID3 DATA HUB: https://data.grid3.org/
-
-Mine areas can be constructed from geolocations from the Mozambique Mining
-Cadastre Map Portal: https://portals.landfolio.com/mozambique/en/
-
-Landsat image data were downloaded from the USGS website:
-https://earthexplorer.usgs.gov/
 
 ```{r}
 
@@ -87,7 +57,7 @@ syrah_buf <- buffer(syrah, 9000)
 
 blma2021_qa <- rast(
   "~/data/raw/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF"
-)
+) # check how to decode qa band in QGIS (open source).
 activeCat(blma2021_qa) <- 0
 plot(blma2021_qa)
 
