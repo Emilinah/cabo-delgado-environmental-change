@@ -64,13 +64,13 @@ plot(blma2021_qa)
 
 aoi <- function(QA_band, bands_17, mine_area) {
   cloudsmask <- classify(QA_band, rbind(c(21824, 21824), c(21952, 21952)),
-    othersNA = TRUE
-  )
-  b17_clear <- mask(bands17, cloudsmask)
+                         others = NULL)
+  b17_clear <- mask(bands_17, cloudsmask)
   b17_clear_proj <- project(b17_clear, moz_crs)
   aoi_mine_area <- crop(b17_clear_proj, mine_area, snap = "near", mask = TRUE)
   return(aoi_mine_area)
 }
+
 
 blma2021 <- aoi(blma2021_qa, blma2021_b17, syrah_buf)
 names(blma2021) <- gsub(
