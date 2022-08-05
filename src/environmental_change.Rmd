@@ -17,21 +17,25 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(terra) # raster data
 library(sf) # vector data
-library("lintr") #organize writing style
+library(lintr) #organize writing style
 library(rpart) # train classification model
 library(dismo) # model evaluation
+library(ggplot2)
+library(reshape2) #converting dataframe to long format for ggplot
+
+
 
 ```
 
-## Preprocessing Balama images 2021
+## Preprocessing Balama images
 
 ```{r}
 
 # loading relevant image bands -----------
 
 
-bands17 <- function(images_path) {
-  bands17 <- list.files(images_path,
+bands17 <- function(images) {
+  bands17 <- list.files(images,
     pattern = glob2rx("*B*"),
     full.names = TRUE
   )
@@ -40,48 +44,45 @@ bands17 <- function(images_path) {
 }
 
 blma2021_b17 <- bands17("~/data/raw/images/2021/0609")
-blma2021_b17
 
 
 # removing cloud cover pixels, re-projecting to correct CRS, crop to AOI ------
 
-moz_crs <- "+init=EPSG:32737"
-blma <- vect(
-  x = "~/data/raw/balama/blma.shp",
-  query = "SELECT POSTO FROM \"blma\""
-)
-syrah <- vect(
-  x = "~/data/raw/balama/syrah.shp",
-  query = "SELECT Mine FROM \"syrah\" WHERE FID = 0"
-)
-syrah_buf <- buffer(syrah, 9000)
+moz_crs    <- "+init=EPSG:32737"
+blma       <- st_read("~/data/raw/balama/blma.shp", query = "SELECT POSTO FROM \"blma\"")
+syrah      <- st_read("~/data/raw/balama/syrah.shp",
+  query = "SELECT Mine FROM \"syrah\" WHERE FID = 0")
+syrah_buf  <- st_buffer(syrah, 9000)
+
+ggplot() +
+  geom_sf(data = blma) + 
+  geom_sf(data = syrah_buf) +
+  geom_sf(data = syrah) +
+  coord_sf()
 
 
-blma2021_qa <- rast(
-  "~/data/raw/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF"
-) # check how to decode qa band in QGIS (open source).
+blma2021_qa            <- rast(
+  "~/data/raw/images/2021/0609/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
 activeCat(blma2021_qa) <- 0
 plot(blma2021_qa)
 
 
-aoi <- function(QA_band, bands_17, mine_area) {
-  cloudsmask <- classify(QA_band, rbind(c(21824, 21824), c(21952, 21952)),
+aoi             <- function(QAband, bands17, mineArea) {
+  cloudmask     <- classify(QAband, rbind(c(21824, 21824), c(21952, 21952)),
                          others = NULL)
-  b17_clear <- mask(bands_17, cloudsmask)
-  b17_clear_proj <- project(b17_clear, moz_crs)
-  aoi_mine_area <- crop(b17_clear_proj, mine_area, snap = "near", mask = TRUE)
-  return(aoi_mine_area)
+  b17_clear     <- mask(bands17, cloudmask)
+  b17_clearProj <- project(b17_clear, moz_crs)
+  aoi_mineArea  <- crop(b17_clearProj, mineArea, snap = "near", mask = TRUE)
+  return(aoi_mineArea)
 }
 
 
-blma2021 <- aoi(blma2021_qa, blma2021_b17, syrah_buf)
+blma2021        <- aoi(blma2021_qa, blma2021_b17, syrah_buf)
 names(blma2021) <- gsub(
   pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
   replacement = "blma2021",
   names(blma2021))
-
-plot(blma2021$blma2021_B4)
-plot(syrah, add = TRUE)
 
 ```
 
@@ -95,20 +96,21 @@ plot(syrah, add = TRUE)
 
 par(mfrow = c(2, 2))
 
-aoi_comps <- function(bands_17, x, y, z) {
-  aoi_comp <-c(bands_17[[x]], bands_17[[y]], bands_17[[z]])
-  return(aoi_comp)
+comps   <- function(bands17, x, y, z) {
+  comps <-c(bands17[[x]], bands17[[y]], bands17[[z]])
+  return(comps)
 }
 
-blma2021_b543 <- aoi_comps(blma2021, 5, 4, 3)
+
+blma2021_b543 <- comps(blma2021, 5, 4, 3)
 writeRaster(blma2021_b543, file.path("~/results/output", "blma2021_b543.tif"),
             overwrite=TRUE, filetype="GTiff")
 
-blma2021_b654 <- aoi_comps(blma2021, 6, 5, 4)
+blma2021_b654 <- comps(blma2021, 6, 5, 4)
 writeRaster(blma2021_b654, file.path("~/results/output", "blma2021_b654.tif"),
             overwrite=TRUE, filetype="GTiff")
 
-blma2021_b432 <- aoi_comps(blma2021, 4, 3, 2)
+blma2021_b432 <- comps(blma2021, 4, 3, 2)
 writeRaster(blma2021_b432, file.path("~/results/output", "blma2021_b432.tif"),
             overwrite=TRUE, filetype="GTiff")
 
@@ -116,152 +118,161 @@ plotRGB(blma2021_b543, r = 1, g = 2, b = 3, stretch = "lin")
 plot(syrah, add = TRUE)
 
 
-aoi_index <- function(bands_17, x, y) {
-  band_x <- bands_17[[x]]
-  band_y <- bands_17[[y]]
-  index <- (band_x - band_y)/(band_x + band_y)
-  return(index)
+indices <- function(bands17, x, y) {
+  bandx <- bands17[[x]]
+  bandy <- bands17[[y]]
+  indices <- (bandx - bandy)/(bandx + bandy)
+  return(indices)
 }
 
-blma2021_ndvi <- aoi_index(blma2021, 5, 4)
+
+blma2021_ndvi <- indices(blma2021, 5, 4)
 writeRaster(blma2021_ndvi, file.path("~/results/output", "blma2021_ndvi.tif"),
             overwrite=TRUE, filetype="GTiff")
 
-blma2021_ndbi <- aoi_index(blma2021, 6, 5)
+blma2021_ndbi <- indices(blma2021, 6, 5)
 writeRaster(blma2021_ndbi, file.path("~/results/output", "blma2021_ndbi.tif"),
             overwrite=TRUE, filetype="GTiff")
 
-blma2021_mndwi <- aoi_index(blma2021, 3, 6)
+blma2021_mndwi <- indices(blma2021, 3, 6)
 writeRaster(blma2021_mndwi, file.path("~/results/output", "blma2021_mndwi.tif"),
             overwrite=TRUE, filetype="GTiff")
 
 plot(blma2021_ndvi)
 plot(syrah, add = TRUE)
 
-# model training
+## model training
 
 blma2021_train <- vect("~/data/temp/training-samples/blma2021_b543_train.shp")
-plot(blma2021_train)
-plot(syrah_buf, add=TRUE)
-text(blma2021_train, blma2021_train$Classname)
 
-set.seed(1)
-blma2021_train_samps <- spatSample(blma2021_train, 200, method = "regular")
-blma2021_train_samps_df <- extract(blma2021_b543, blma2021_train_samps)
-head(blma2021_train_samps_df)
+# create training samples from ground truth training sites data
 
-blma2021_train_samps_df_mean <- aggregate(blma2021_train_samps_df[, -1], list(blma2021_train_samps$Classname), mean)
-rownames(blma2021_train_samps_df_mean) <- blma2021_train_samps_df_mean[, 1]
-blma2021_train_samps_df_mean <- blma2021_train_samps_df_mean[, -1]
-
-blma2021_train_samps_df_mean
-
-lulc_colors_5 <- c('darkorange', 'darkgreen', 'green', 'deepskyblue', 'lightcyan')
-lulc_colors_4 <- c('darkorange', 'darkgreen', 'green', 'deepskyblue')
-
-
-blma2021_train_samps_df_mean <- as.matrix(blma2021_train_samps_df_mean)
-blma2021_train_samps_df_mean
-
-plot(7400, ylim=c(7400,18000), xlim = c(1,3), type='n', xlab="Bands", ylab = "Reflectance")
-
-for (i in 1:nrow(blma2021_train_samps_df_mean)){
-lines(blma2021_train_samps_df_mean[i,], type = "l", lwd = 3, lty = 1, col = lulc_colors_4[i])
+samps <- function(train, aoi) {
+  Tsamps  <- spatSample(train, 500, method = "random")
+  sampsXY <- as.matrix(geom(Tsamps)[,c('x','y')])
+  sampsdf <- extract(aoi, sampsXY)
+  samps   <- data.frame(class = Tsamps$Classname, sampsdf)
+  return(samps)
 }
 
-title(main="Spectral Signatures", font.main = 2)
 
-legend("topright", rownames(blma2021_train_samps_df_mean),
-cex=0.8, col=lulc_colors_4, lty = 1, lwd =3, bty = "n")
+blma2021_samps     <- samps(blma2021_train, blma2021)
+blma2021_sampsDist
+blma2021_sampsDist <- table(as.character(blma2021_samps$class))
+write.table(blma2021_sampsDist, 
+            file.path("~/results/output", "blma2021_sampsDist.csv"))
 
-set.seed(1)
-blma2021_samps <- spatSample(blma2021_train, 500, method = "random")
-plot(blma2021_samps, "Classname")
-table(as.character(blma2021_samps$Classname))
+# inspect the spectral profiles of the training samples
 
-plotRGB(blma2021_b543, r = 1, b = 2, g = 3, stretch = "lin")
-points(blma2021_samps)
-
-blma2021_samps_xy <- as.matrix(geom(blma2021_samps)[,c('x','y')])
-blma2021_samps_df <- extract(blma2021_b543, blma2021_samps_xy)
-
-blma2021_samps_final <- data.frame(class = blma2021_samps$Classname, blma2021_samps_df)
-blma2021_samps_final
+col4 <- c('darkorange', 'darkgreen', 'green', 'deepskyblue')
+col5 <- c('darkorange', 'darkgreen', 'green', 'deepskyblue', 'lightcyan')
 
 
-blma2021_lulc_cart <- rpart(as.factor(class)~., data = blma2021_samps_final, method = 'class', minsplit = 5)
-print(blma2021_lulc_cart)
-plot(blma2021_lulc_cart, uniform=TRUE, main="Classification Tree")
-text(blma2021_lulc_cart, cex = 1)
+sampsSP <- function(samps) {
+  sampsSP             <- aggregate(samps[, -1], list(samps$class), mean)
+  rownames(sampsSP)   <- sampsSP[, 1]
+  sampsSP             <- sampsSP[, -1]
+  names(sampsSP)[1:7] <- 1:7
+  sampsSP             <- t(sampsSP)
+  sampsSP             <- as.data.frame(sampsSP)
+  sampsSP             <- cbind(bands = rownames(sampsSP), sampsSP)
+  rownames(sampsSP)   <- NULL
+  sampsSP             <- melt(sampsSP, id.vars = "bands", variable.name = "lulc")
+  sampsSP$bands       <- as.numeric(sampsSP$bands)
+  sampsSP             <- ggplot(sampsSP, aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profiles") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = col4,
+                    labels = clas4)
+  return(sampsSP)
+}
+sampsSP(blma2021_samps)
 
-blma2021_lulc_class <- predict(blma2021_b543, blma2021_lulc_cart, na.rm = TRUE)
-blma2021_lulc_class
-plot(blma2021_lulc_class)
+# create training model and classify image
 
-blma2021_lulc <- which.max(blma2021_lulc_class)
-plot(blma2021_lulc)
+lulc <- function(samps, aoi) {
+  model      <- rpart(as.factor(class)~., data = samps, 
+                         method = 'class', minsplit = 5)
+  classified <- predict(aoi, model, na.rm = TRUE)
+  lulc       <- which.max(classified)
+  return(lulc)
+}
 
-classes_4 <- c("built_bare", "dense_veg", "sparse_veg", "water")
-classes_5 <- c("built_bare", "dense_veg", "sparse_veg", "water", "wetland")
-lulc_df <- data.frame(id = 1:4, class = classes_4)
-levels(blma2021_lulc) <- lulc_df
+blma2021_lulc           <- lulc(blma2021_samps, blma2021)
 blma2021_lulc
-plot(blma2021_lulc, col = lulc_colors_4)
-lulc_df
+
+# plotting classified image
+
+blma2021_lulcdf         <- blma2021_lulc
+lulc_df                 <- data.frame(id = 1:4, lulc = clas4)
+levels(blma2021_lulcdf) <- lulc_df
+blma2021_lulcdf         <- as.data.frame(blma2021_lulcdf, xy = TRUE)
+
+clas4 <- c("built & bare", "dense vegetation", "sparse vegetation", "water")
+clas5 <- c("built & bare", "dense vegetation", "sparse vegetation", "water", "wetland")
+
+ggplot() +
+  geom_raster(data = blma2021_lulcdf, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = syrah, fill = NA) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Balama 2021 land use land cover") +
+  scale_fill_manual("LULC", 
+                    values = col4,
+                    labels = clas4) +
+  coord_sf()
+
+
 # model evaluation
 
-set.seed(99)
-
-j <- kfold(blma2021_samps_final, k = 5, by = blma2021_samps_final$class)
-table(j)
-
-acc <- list()
+sampGrps   <- kfold(blma2021_samps, k = 5, by = blma2021_samps$class)
+table(sampGrps)
+accuracies <- list()
 
 for (k in 1:5) {
-  train <- blma2021_samps_final[j!= k, ]
-  test <- blma2021_samps_final[j == k, ]
-  cart <- rpart(as.factor(class)~., data=train, method = 'class', minsplit = 5)
-  pclass <- predict(cart, test, na.rm = TRUE) 
-  pclass <- apply(pclass, 1, which.max)
-  acc[[k]] <- cbind(test$class, as.integer(pclass))
+  train      <- blma2021_samps[sampGrps!= k, ]
+  test       <- blma2021_samps[sampGrps == k, ]
+  model      <- rpart(as.factor(class)~., data=train, method = 'class', minsplit = 5) # TODO check minsplit value.
+  classified <- predict(model, test, na.rm = TRUE) 
+  lulc       <- apply(classified, 1, which.max)
+  accuracies[[k]] <- cbind(test$class, as.integer(lulc))
+}
+accuracies
+
+# lulc accuracy assessment
+
+lulc_acc <- function(acc) {
+  acctidy            <- do.call(rbind, accuracies)
+  acctidy            <- data.frame(acctidy)
+  colnames(acctidy)  <- c('observed', 'predicted')
+  confmat            <- table(acctidy)
+  colnames(confmat)  <- lulc_df$class
+  samples            <- sum(confmat)
+  samples_true       <- diag(confmat)
+  overallAcc         <- sum(samples_true)/samples
+  obsCases           <- apply(confmat, 1, sum)
+  obsCases_true      <- obsCases/samples
+  predCases          <- apply(confmat, 2, sum)
+  predCases_true     <- predCases/samples
+  expAcc             <- sum(obsCases_true*predCases_true)
+  kappa              <- (overallAcc - expAcc)/(1 - expAcc)
+  ProdAcc            <- samples_true/predCases
+  UserAcc            <- samples_true/obsCases
+  outAcc             <- data.frame(ProdAcc, UserAcc)
+  lulc_acc           <- list(confmat, overallAcc, kappa, outAcc)
+  return(lulc_acc)
 }
 
-acc_5 <- do.call(rbind, acc)
-acc_5 <- data.frame(acc_5)
-colnames(acc_5) <- c('observed', 'predicted')
+blma2021_lulcAcc <- lulc_acc(accuracies)
+blma2021_lulcAcc
 
-confmat <- table(acc_5)
-colnames(confmat) <- lulc_df$class
-print(confmat)
-
-blma2021_cases <- sum(confmat)
-blma2021_true_cases <- diag(confmat)
-blma2021_overall_acc <- sum(blma2021_true_cases)/blma2021_cases
-
-
-blma2021_rowsums <- apply(confmat, 1, sum)
-blma2021_rowsums_obs <- blma2021_rowsums/blma2021_cases
-
-blma2021_colsums <- apply(confmat, 2, sum)
-blma2021_colsums_prd <- blma2021_colsums/blma2021_cases
-
-blma2021_expAcc <- sum(blma2021_rowsums_obs*blma2021_colsums_prd)
-blma2021_kappa <- (blma2021_overall_acc - blma2021_expAcc)/(1 - blma2021_expAcc)
-blma2021_kappa
-
-blma2021_ProdAcc <- blma2021_true_cases/blma2021_colsums
-blma2021_UserAcc <- blma2021_true_cases/blma2021_rowsums
-
-blma2021_outAcc <- data.frame(producerAccuracy = blma2021_ProdAcc, userAccuracy = blma2021_UserAcc)
-blma2021_outAcc 
-
-# i don't trust these accuracies. They are completely dependent on the 
-# groundtruth/reference data so if that is wrong, so are the accuracies. 
 # i know for sure built-bare is currently wrongly classified as sparse veg.
 # see GEE script from Simon.
 ```
 
-
+## change detection
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent
 printing of the R code that generated the plot.
