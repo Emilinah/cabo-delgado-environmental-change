@@ -1,0 +1,951 @@
+---
+title: "Land use land cover change due to green extractivism in Mozambique"
+author: "Emilinah Namaganda"
+date: "2022-11-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Loading the necessary libraries
+
+```{r cars}
+library(sf) 
+library(lintr) 
+library(rpart) 
+library(dismo) 
+library(ggplot2)
+library(reshape2)
+library(randomForest)
+library(RStoolbox)
+library(caret)
+library(e1071)
+library(rgdal)
+library(terra)
+```
+
+## Preprocessing Twigg, GK and Total images
+
+```{r}
+# loading relevant image bands -----------
+
+
+bands17 <- function(images) {
+  bands17 <- list.files(images,
+    pattern = glob2rx("*B*"),
+    full.names = TRUE)
+  bands17 <- rast(bands17[1:7])
+  return(bands17)
+}
+
+blma2021_b17 <- bands17("~/data/raw/images/2021/0609_165069")
+blma2015_b17 <- bands17("~/data/raw/images/2015/0524_165069")
+blma2009_b17 <- bands17("~/data/raw/images/2009/0624_165069")
+
+plma2020A_b17 <- bands17("~/data/raw/images/2020/0521_165067")
+plma2020B_b17 <- bands17("~/data/raw/images/2020/0701_164068")
+plma2015A_b17 <- bands17("~/data/raw/images/2015/0609_165067")
+plma2015B_b17 <- bands17("~/data/raw/images/2015/0517_164068")
+plma2008A_b17 <- bands17("~/data/raw/images/2008/0520_165067")
+plma2008B_b17 <- bands17("~/data/raw/images/2008/0326_164068")
+plma2008C_b17 <- bands17("~/data/raw/images/2008/0520_165068")
+
+ancb2020A_b17 <- bands17("~/data/raw/images/2020/0521_165069")
+ancb2020B_b17 <- bands17("~/data/raw/images/2020/0615_164069")
+ancb2015A_b17 <- bands17("~/data/raw/images/2015/0524_165069")
+ancb2015B_b17 <- bands17("~/data/raw/images/2015/0517_164069")
+ancb2009A_b17 <- bands17("~/data/raw/images/2009/0523_165069")
+ancb2009B_b17 <- bands17("~/data/raw/images/2009/0516_164069")
+
+# removing cloud cover pixels, re-projecting to correct CRS, crop to AOI ------
+
+moz_crs    <- "+init=EPSG:32737" # check why i need to re-run everything if i close R: message: external pointer is not valid.
+blma       <- vect("~/data/raw/mines/blma.shp", query = "SELECT POSTO FROM \"blma\"")
+blmaPACS  <- st_read("~/data/raw/mines/blmaPACS.shp", query = "SELECT NomeN1 FROM \"blmaPACS\"")
+syrah      <- st_read("~/data/raw/mines/syrah.shp",
+  query = "SELECT Mine FROM \"syrah\" WHERE FID = 0")
+syrah_buf  <- st_buffer(syrah, 9000)
+syrah_bufSV <- vect(as(syrah_buf, "Spatial"))
+
+plma       <- vect("~/data/raw/mines/plma.shp", query = "SELECT NAME_3 FROM \"plma\"")
+plmaPACS  <- st_read("~/data/raw/mines/plmaPACS.shp", query = "SELECT Settlement FROM \"plmaPACS\"")
+plot(plmaPACS)
+total      <- st_read("~/data/raw/mines/total.shp", query = "SELECT Name FROM \"total\" WHERE FID = 0")
+totalSV <- vect("~/data/raw/mines/total.shp", query = "SELECT Name FROM \"total\" WHERE FID = 0")
+total_buf  <- st_buffer(total, 12000)
+plot(total_buf)
+st_write(total_buf, file.path("~/results/output", "total_buf.shp"),
+            overwrite=TRUE)
+total_bufSV <- vect(as(total_buf, "Spatial"))
+totalAoi    <- crop(plma, total_bufSV) # created an extra AOI to eliminate the ocean from analysis
+
+ancb       <- vect("~/data/raw/mines/ancb.shp", query = "SELECT POSTO FROM \"ancb\"")
+ancbPACS  <- st_read("~/data/raw/mines/ancbPACS.shp", query = "SELECT Community FROM \"ancbPACS\"")
+gk      <- st_read("~/data/raw/mines/gk.shp",
+  query = "SELECT Mine FROM \"gk\" WHERE FID = 0")
+gk_buf  <- st_buffer(gk, 15000)
+
+?`mask,SpatRaster,SpatRaster-method`
+
+ggplot() +
+  geom_sf(data = total_buf) + 
+  geom_sf(data = total) +
+  coord_sf()
+
+colb <- c('darkorange', 'darkgreen', 'green', 'deepskyblue')
+colp <- c('darkorange', 'darkgreen', 'green', 'lightcyan', 'deepskyblue')
+clasb <- c("built & bare", "dense vegetation", "sparse vegetation", "water")
+clasp <- c("built & bare", "dense vegetation", "sparse vegetation", "wetland", "water")
+
+blma2021_qa            <- rast(
+  "~/data/raw/images/2021/0609_165069/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(blma2021_qa) <- 0
+
+blma2015_qa            <- rast(
+  "~/data/raw/images/2015/0524_165069/LC08_L2SP_165069_20150524_20200909_02_T1_QA_PIXEL.TIF") 
+activeCat(blma2015_qa) <- 0
+
+blma2009_qa            <- rast(
+  "~/data/raw/images/2009/0624_165069/LT05_L2SP_165069_20090624_20200827_02_T1_QA_PIXEL.TIF") 
+activeCat(blma2009_qa) <- 0
+
+plma2020A_qa            <- rast(
+  "~/data/raw/images/2020/0521_165067/LC08_L2SP_165067_20200521_20200820_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(plma2020A_qa) <- 0
+
+plma2020B_qa            <- rast(
+  "~/data/raw/images/2020/0701_164068/LC08_L2SP_164068_20200701_20200913_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(plma2020B_qa) <- 0
+
+plma2015A_qa            <- rast(
+  "~/data/raw/images/2015/0609_165067/LC08_L2SP_165067_20150609_20200909_02_T1_QA_PIXEL.TIF") 
+activeCat(plma2015A_qa) <- 0
+
+plma2015B_qa            <- rast(
+  "~/data/raw/images/2015/0517_164068/LC08_L2SP_164068_20150517_20200909_02_T1_QA_PIXEL.TIF") 
+activeCat(plma2015B_qa) <- 0
+
+plma2008A_qa            <- rast(
+  "~/data/raw/images/2008/0520_165067/LT05_L2SP_165067_20080520_20200829_02_T1_QA_PIXEL.TIF") 
+activeCat(plma2008A_qa) <- 0
+
+plma2008B_qa            <- rast(
+  "~/data/raw/images/2008/0326_164068/LT05_L2SP_164068_20080326_20200829_02_T1_QA_PIXEL.TIF") 
+activeCat(plma2008B_qa) <- 0
+
+plma2008C_qa            <- rast(
+  "~/data/raw/images/2008/0520_165068/LT05_L2SP_165068_20080520_20200829_02_T1_QA_PIXEL.TIF") 
+activeCat(plma2008C_qa) <- 0
+
+
+ancb2020A_qa            <- rast(
+  "~/data/raw/images/2020/0521_165069/LC08_L2SP_165069_20200521_20200820_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(ancb2020A_qa) <- 0
+ancb2020B_qa            <- rast(
+  "~/data/raw/images/2020/0615_164069/LC08_L2SP_164069_20200615_20200823_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(ancb2020B_qa) <- 0
+
+ancb2015A_qa            <- rast(
+  "~/data/raw/images/2015/0524_165069/LC08_L2SP_165069_20150524_20200909_02_T1_QA_PIXEL.TIF") 
+activeCat(ancb2015A_qa) <- 0
+ancb2015B_qa            <- rast(
+  "~/data/raw/images/2015/0517_164069/LC08_L2SP_164069_20150517_20200909_02_T1_QA_PIXEL.TIF") 
+activeCat(ancb2015B_qa) <- 0
+
+ancb2009A_qa            <- rast(
+  "~/data/raw/images/2009/0523_165069/LT05_L2SP_165069_20090523_20200827_02_T1_QA_PIXEL.TIF") 
+activeCat(ancb2009A_qa) <- 0
+ancb2009B_qa            <- rast(
+  "~/data/raw/images/2009/0516_164069/LT05_L2SP_164069_20090516_20200827_02_T1_QA_PIXEL.TIF") 
+# check how to decode qa band in QGIS (open source).
+activeCat(ancb2009B_qa) <- 0
+
+aoi_L8             <- function(QAband, bands17, aoi_SF, aoi_vect) {
+  cloudmask     <- classify(QAband, rbind(c(21824, 21824), c(21952, 21952)),
+                         others = NA) # TODO open issue in Terra others=NULL doesn't work anymore
+  b17_clear     <- mask(bands17, cloudmask)
+  b17_clearProj <- project(b17_clear, moz_crs)
+  aoi_crop      <- crop(b17_clearProj, aoi_SF, snap = "near", mask = TRUE)
+  aoi_cropSV    <- mask(aoi_crop, aoi_vect)
+  return(aoi_cropSV)
+}
+
+aoi_L5          <- function(QAband, bands17, aoi_SF, aoi_vect) {
+  cloudmask     <- classify(QAband, rbind(c(5440, 5440), c(5504, 5504)),
+                         others = NA)
+  b17_clear     <- mask(bands17, cloudmask)
+  b17_clearProj <- project(b17_clear, moz_crs)
+  aoi_crop      <- crop(b17_clearProj, aoi_SF, snap = "near", mask = TRUE)
+  aoi_cropSV    <- mask(aoi_crop, aoi_vect)
+  return(aoi_cropSV)
+}
+
+blma2021        <- aoi_L8(blma2021_qa, blma2021_b17, blma, blma)
+names(blma2021) <- gsub(
+  pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
+  replacement = "blma2021",
+  names(blma2021))
+
+blma2015        <- aoi_L8(blma2015_qa, blma2015_b17, blma, blma)
+names(blma2015) <- gsub(
+  pattern = "LC08_L2SP_165069_20150524_20200909_02_T1_SR",
+  replacement = "blma2015",
+  names(blma2015))
+
+blma2009        <- aoi_L5(blma2009_qa, blma2009_b17, blma, blma)
+names(blma2009) <- gsub(
+  pattern = "LT05_L2SP_165069_20090624_20200827_02_T1_SR",
+  replacement = "blma2009",
+  names(blma2009))
+names(blma2009) <- gsub(
+  pattern = "LT05_L2SP_165069_20090624_20200827_02_T1_ST",
+  replacement = "blma2009",
+  names(blma2009))
+
+plma2020A        <- aoi_L8(plma2020A_qa, plma2020A_b17, plma, plma)
+names(plma2020A) <- gsub(
+  pattern = "LC08_L2SP_165067_20200521_20200820_02_T1_SR",
+  replacement = "plma2020A",
+  names(plma2020A))
+plma2020B        <- aoi_L8(plma2020B_qa, plma2020B_b17, plma, plma)
+names(plma2020B) <- gsub(
+  pattern = "LC08_L2SP_164068_20200701_20200913_02_T1_SR",
+  replacement = "plma2020B",
+  names(plma2020B))
+plma2020 <- mosaic(plma2020A, plma2020B)
+
+plma2015A        <- aoi_L8(plma2015A_qa, plma2015A_b17, plma, plma)
+names(plma2015A) <- gsub(
+  pattern = "LC08_L2SP_165067_20150609_20200909_02_T1_SR",
+  replacement = "plma2015A",
+  names(plma2015A))
+plma2015B        <- aoi_L8(plma2015B_qa, plma2015B_b17, plma, plma)
+names(plma2015B) <- gsub(
+  pattern = "LC08_L2SP_164068_20150517_20200909_02_T1_SR",
+  replacement = "plma2015B",
+  names(plma2015B))
+plma2015 <- mosaic(plma2015A, plma2015B)
+
+plma2008A        <- aoi_L5(plma2008A_qa, plma2008A_b17, plma, plma)
+names(plma2008A) <- gsub(
+  pattern = "LT05_L2SP_165067_20080520_20200829_02_T1_SR",
+  replacement = "plma2008A",
+  names(plma2008A))
+names(plma2008A) <- gsub(
+  pattern = "LT05_L2SP_165067_20080520_20200829_02_T1_ST",
+  replacement = "plma2008A",
+  names(plma2008A))
+plma2008B        <- aoi_L5(plma2008B_qa, plma2008B_b17, plma, plma)
+names(plma2008B) <- gsub(
+  pattern = "LT05_L2SP_164068_20080326_20200829_02_T1_SR",
+  replacement = "plma2008B",
+  names(plma2008B))
+names(plma2008B) <- gsub(
+  pattern = "LT05_L2SP_164068_20080326_20200829_02_T1_ST",
+  replacement = "plma2008B",
+  names(plma2008B))
+plma2008C        <- aoi_L5(plma2008C_qa, plma2008C_b17, plma, plma)
+names(plma2008C) <- gsub(
+  pattern = "LT05_L2SP_164068_20080326_20200829_02_T1_SR",
+  replacement = "plma2008C",
+  names(plma2008C))
+names(plma2008C) <- gsub(
+  pattern = "LT05_L2SP_164068_20080326_20200829_02_T1_ST",
+  replacement = "plma2008C",
+  names(plma2008C))
+plma2008 <- mosaic(plma2008A, plma2008B, plma2008C)
+
+ancb2020A        <- aoi_L8(ancb2020A_qa, ancb2020A_b17, ancb, ancb)
+names(ancb2020A) <- gsub(
+  pattern = "LC08_L2SP_165069_20200521_20200820_02_T1_SR",
+  replacement = "ancb2020A",
+  names(ancb2020A))
+ancb2020B        <- aoi_L8(ancb2020B_qa, ancb2020B_b17, ancb, ancb)
+names(ancb2020B) <- gsub(
+  pattern = "LC08_L2SP_164069_20200615_20200823_02_T1_SR",
+  replacement = "ancb2020B",
+  names(ancb2020B))
+ancb2020 <- mosaic(ancb2020A, ancb2020B)
+
+ancb2015A        <- aoi_L8(ancb2015A_qa, ancb2015A_b17, ancb, ancb)
+names(ancb2015A) <- gsub(
+  pattern = "LC08_L2SP_165069_20150524_20200909_02_T1_SR",
+  replacement = "ancb2015A",
+  names(ancb2015A))
+ancb2015B        <- aoi_L8(ancb2015B_qa, ancb2015B_b17, ancb, ancb)
+names(ancb2015B) <- gsub(
+  pattern = "LC08_L2SP_164069_20150517_20200909_02_T1_SR",
+  replacement = "ancb2015B",
+  names(ancb2020B))
+ancb2015 <- mosaic(ancb2015A, ancb2015B)
+
+ancb2009A        <- aoi_L5(ancb2009A_qa, ancb2009A_b17, ancb, ancb)
+names(ancb2009A) <- gsub(
+  pattern = "LT05_L2SP_165069_20090523_20200827_02_T1_SR",
+  replacement = "ancb2009A",
+  names(ancb2009A))
+names(ancb2009A) <- gsub(
+  pattern = "LT05_L2SP_165069_20090523_20200827_02_T1_ST",
+  replacement = "ancb2009A",
+  names(ancb2009A))
+ancb2009B        <- aoi_L5(ancb2009B_qa, ancb2009B_b17, ancb, ancb)
+names(ancb2009B) <- gsub(
+  pattern = "LT05_L2SP_164069_20090516_20200827_02_T1_SR",
+  replacement = "ancb2009B",
+  names(ancb2009B))
+names(ancb2009B) <- gsub(
+  pattern = "LT05_L2SP_164069_20090516_20200827_02_T1_ST",
+  replacement = "ancb2009B",
+  names(ancb2009B))
+ancb2009 <- mosaic(ancb2009A, ancb2009B)
+```
+
+## Classifying the images
+
+```{r}
+# composites and indices exported to arcgis to create training samples. 
+# couldn't find how to do that in R. Perhaps additional benefit of GEE is that
+# it is more self-contained?
+
+par(mfrow = c(1, 2))
+
+comps   <- function(bands17, x, y, z) {
+  comps <-c(bands17[[x]], bands17[[y]], bands17[[z]])
+  return(comps)
+}
+
+blma2021_b543 <- comps(blma2021, 5, 4, 3)
+writeRaster(blma2021_b543, file.path("~/results/output", "blma2021_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2015_b543 <- comps(blma2015, 5, 4, 3)
+writeRaster(blma2015_b543, file.path("~/results/output", "blma2015_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2009_b432 <- comps(blma2009, 4, 3, 2)
+writeRaster(blma2009_b432, file.path("~/results/output", "blma2009_b432.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+blma2021_b654 <- comps(blma2021, 6, 5, 4)
+writeRaster(blma2021_b654, file.path("~/results/output", "blma2021_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2015_b654 <- comps(blma2015, 6, 5, 4)
+writeRaster(blma2015_b654, file.path("~/results/output", "blma2015_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2009_b543 <- comps(blma2009, 5, 4, 3)
+writeRaster(blma2009_b543, file.path("~/results/output", "blma2009_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+plma2020_b543 <- comps(plma2020, 5, 4, 3)
+writeRaster(plma2020_b543, file.path("~/results/output", "plma2020_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2015_b543 <- comps(plma2015, 5, 4, 3)
+writeRaster(plma2015_b543, file.path("~/results/output", "plma2015_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2008_b432 <- comps(plma2008, 4, 3, 2)
+writeRaster(plma2008_b432, file.path("~/results/output", "plma2008_b432.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+plma2020_b654 <- comps(plma2020, 6, 5, 4)
+writeRaster(plma2020_b654, file.path("~/results/output", "plma2020_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2015_b654 <- comps(plma2015, 6, 5, 4)
+writeRaster(plma2015_b654, file.path("~/results/output", "plma2015_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2008_b543 <- comps(plma2008, 5, 4, 3)
+writeRaster(plma2008_b543, file.path("~/results/output", "plma2008_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+ancb2020_b543 <- comps(ancb2020, 5, 4, 3)
+writeRaster(ancb2020_b543, file.path("~/results/output", "ancb2020_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2015_b543 <- comps(ancb2015, 5, 4, 3)
+writeRaster(ancb2015_b543, file.path("~/results/output", "ancb2015_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2009_b432 <- comps(ancb2009, 4, 3, 2)
+writeRaster(ancb2009_b432, file.path("~/results/output", "ancb2009_b432.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+ancb2020_b654 <- comps(ancb2020, 6, 5, 4)
+writeRaster(ancb2020_b654, file.path("~/results/output", "ancb2020_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2015_b654 <- comps(ancb2015, 6, 5, 4)
+writeRaster(ancb2015_b654, file.path("~/results/output", "ancb2015_b654.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2009_b543 <- comps(ancb2009, 5, 4, 3)
+writeRaster(ancb2009_b543, file.path("~/results/output", "ancb2009_b543.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+plotRGB(plma2008_b432, r = 1, g = 2, b = 3, stretch = "lin")
+plot(total, add = TRUE, col=NA)
+
+
+indices <- function(bands17, x, y) {
+  bandx <- bands17[[x]]
+  bandy <- bands17[[y]]
+  indices <- (bandx - bandy)/(bandx + bandy)
+  return(indices)
+}
+
+
+blma2021_ndvi <- indices(blma2021, 5, 4)
+writeRaster(blma2021_ndvi, file.path("~/results/output", "blma2021_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2015_ndvi <- indices(blma2015, 5, 4)
+writeRaster(blma2015_ndvi, file.path("~/results/output", "blma2015_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+blma2009_ndvi <- indices(blma2009, 4, 3)
+writeRaster(blma2009_ndvi, file.path("~/results/output", "blma2009_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+plma2020_ndvi <- indices(plma2020, 5, 4)
+writeRaster(plma2020_ndvi, file.path("~/results/output", "plma2020_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2015_ndvi <- indices(plma2015, 5, 4)
+writeRaster(plma2015_ndvi, file.path("~/results/output", "plma2015_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+plma2008_ndvi <- indices(plma2008, 4, 3) # Simon's idea
+writeRaster(plma2008_ndvi, file.path("~/results/output", "plma2008_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+ancb2020_ndvi <- indices(ancb2020, 5, 4)
+writeRaster(ancb2020_ndvi, file.path("~/results/output", "ancb2020_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2015_ndvi <- indices(ancb2015, 5, 4)
+writeRaster(ancb2015_ndvi, file.path("~/results/output", "ancb2015_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+ancb2009_ndvi <- indices(ancb2009, 4, 3)
+writeRaster(ancb2009_ndvi, file.path("~/results/output", "ancb2009_ndvi.tif"),
+            overwrite=TRUE, filetype="GTiff")
+
+## model training
+
+blma2021_train <- vect("~/data/temp/training-samples/blma2021_train500V3.shp")
+blma2015_train <- vect("~/data/temp/training-samples/blma2015_train500V2.shp")
+blma2009_train <- vect("~/data/temp/training-samples/blma2009_train500V2.shp")
+
+# Water removed as a class from the training sample. 
+# It was too small to meet the accuracy needs of the classification. 
+# It is now classified as wetland
+
+plma2020_train <- vect("~/data/temp/training-samples/plma2020_train500Weq_4cls.shp")
+plma2015_train <- vect("~/data/temp/training-samples/plma2015_train500_4clsv2.shp")
+plma2008_train <- vect("~/data/temp/training-samples/plma2008_train500W_v2.shp")
+
+ancb2020_train <- vect("~/data/temp/training-samples/ancb2020_train500.shp")
+ancb2015_train <- vect("~/data/temp/training-samples/ancb2015_train500.shp")
+ancb2009_train <- vect("~/data/temp/training-samples/ancb2009_train500.shp")
+
+
+
+
+# create training samples from ground truth training sites data
+
+samps <- function(train, aoi) {
+  Tsamps  <- spatSample(train, 4000, method = "random")
+  sampsXY <- as.matrix(geom(Tsamps)[,c('x','y')])
+  sampsdf <- extract(aoi, sampsXY)
+  samps   <- data.frame(class = Tsamps$Classname, sampsdf)
+  return(samps)
+}
+
+blma2021_samps     <- samps(blma2021_train, blma2021[[3:6]])
+blma2021_sampsDist <- table(as.character(blma2021_samps$class))
+blma2021_sampsDist
+write.table(blma2021_sampsDist, 
+            file.path("~/results/output", "blma2021_sampsDist.csv"))
+
+blma2015_samps     <- samps(blma2015_train, blma2015[[3:6]])
+str(blma2015_samps)
+blma2015_sampsDist <- table(as.character(blma2015_samps$class))
+blma2015_sampsDist
+write.table(blma2015_sampsDist, 
+            file.path("~/results/output", "blma2015_sampsDist.csv"))
+
+blma2009_samps     <- samps(blma2009_train, blma2009[[2:5]])
+str(blma2009_samps)
+blma2009_sampsDist <- table(as.character(blma2009_samps$class))
+blma2009_sampsDist
+write.table(blma2009_sampsDist, 
+            file.path("~/results/output", "blma2009_sampsDist.csv"))
+
+
+plma2020_samps     <- samps(plma2020_train, plma2020[[4:6]])
+plma2020_sampsDist <- table(as.character(plma2020_samps$class))
+plma2020_sampsDist
+write.table(plma2020_sampsDist, 
+            file.path("~/results/output", "plma2020_sampsDist.csv"))
+
+plma2015_samps     <- samps(plma2015_train, plma2015[[4:6]])
+str(plma2015_samps)
+plma2015_samps$class
+plma2015_sampsDist <- table(as.character(plma2015_samps$class))
+plma2015_sampsDist
+write.table(plma2015_sampsDist, 
+            file.path("~/results/output", "plma2015_sampsDist.csv"))
+rm(plma2015_samps)
+plma2008_samps     <- samps(plma2008_train, plma2008[[3:5]])
+str(plma2008_samps)
+plma2008_sampsDist <- table(as.character(plma2008_samps$class))
+plma2008_sampsDist
+write.table(plma2008_sampsDist, 
+            file.path("~/results/output", "plma2008_sampsDist.csv"))
+
+# inspect the spectral profiles of the training samples
+
+sampsSP <- function(samps) {
+  sampsSP             <- aggregate(samps[, -1], list(samps$class), mean)
+  rownames(sampsSP)   <- sampsSP[, 1]
+  sampsSP             <- sampsSP[, -1]
+  names(sampsSP)[1:5] <- 1:5
+  sampsSP             <- t(sampsSP)
+  sampsSP             <- as.data.frame(sampsSP)
+  sampsSP             <- cbind(bands = rownames(sampsSP), sampsSP)
+  rownames(sampsSP)   <- NULL
+  sampsSP             <- melt(sampsSP, id.vars = "bands", variable.name = "lulc")
+  sampsSP$bands       <- as.numeric(sampsSP$bands)
+  sampsSP             <- ggplot(sampsSP, aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profiles") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = colp,
+                    labels = clasp)
+  return(sampsSP)
+}
+sampsSP(blma2021_samps)
+sampsSP(blma2015_samps)
+sampsSP(blma2009_samps)
+
+sampsSP(plma2020_samps)
+sampsSP(plma2015_samps)
+sampsSP(plma2008_samps)
+
+
+
+
+# create training model and classify image
+
+# Palma 2020
+
+trainPlma2020    <- spatSample(plma2020_train, 8000, method = "random")
+table(as.character(trainPlma2020$Classname))
+trainPlma2020xy  <- as.matrix(geom(trainPlma2020)[,c('x','y')])
+trainPlma20      <- extract(plma2020[[3:6]], trainPlma2020xy)
+trainPlma20df    <- data.frame(class = trainPlma2020$Classname, trainPlma20)
+trainPlma20dfdf2 <- cbind(trainPlma20df, trainPlma2020xy)
+trainPlma20SF    <- st_as_sf(trainPlma20dfdf2, coords = c("x", "y"), crs = moz_crs)
+
+
+B_class      <- superClass(plma2020[[4:6]], trainPlma20SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+B_classdf    <- as.data.frame(B_class$map, xy = TRUE)
+B_class
+
+B_classbuf <- crop(B_class$map, total_buf)
+B_classbuf <- mask(B_class$map, total_buf)
+writeRaster(B_classbuf, file.path("~/results/output", "palma2020class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+B_classbufdf    <- as.data.frame(B_classbuf, xy = TRUE)
+B_classbufdf_nna <- na.omit(B_classbufdf)
+
+# Warning message:
+# Raster pixels are placed at uneven horizontal intervals and will be shifted. 
+# Consider using geom_tile() instead.Check difference btn geomtile and geomraster
+
+ggplot() +
+  geom_tile(data = B_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = total, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = plmaPACS, fill = NA) +
+  geom_sf_text(data = plmaPACS, aes(label = Settlement)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Palma 2020 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colp,
+                    labels = clasp) +
+  coord_sf(datum = st_crs(total))
+
+# crop by concession area
+
+B_classTotal <- terra::crop(B_classbuf, total)
+B_classTotal <- terra::mask(B_classTotal, st_zm(total))
+
+
+# RStoolbox - Palma 2015
+
+trainPlma2015    <- spatSample(plma2015_train, size = 8000, method = "random")
+table(as.character(trainPlma2015$Classname))
+trainPlma2015xy  <- as.matrix(geom(trainPlma2015)[,c('x','y')])
+trainPlma15        <- extract(plma2015[[4:6]], trainPlma2015xy)
+trainPlma15df      <- data.frame(class = trainPlma2015$Classname, trainPlma15)
+trainPlma15dfdf2     <- cbind(trainPlma15df, trainPlma2015xy)
+trainPlma15SF       <- st_as_sf(trainPlma15dfdf2, coords = c("x", "y"), crs = moz_crs)
+
+B_class15      <- superClass(plma2015[[4:6]], trainPlma15SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+B_class15
+B_classdf15    <- as.data.frame(B_class15$map, xy = TRUE)
+B_class15buf <- crop(B_class15$map, total_buf)
+B_class15buf <- mask(B_class15$map, total_buf)
+writeRaster(B_class15buf, file.path("~/results/output", "palma2015class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+B_class15bufdf    <- as.data.frame(B_class15buf, xy = TRUE)
+B_class15bufdf_nna <- na.omit(B_class15bufdf)
+
+ggplot() +
+  geom_tile(data = B_class15bufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = total, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = plmaPACS, fill = NA) +
+  geom_sf_text(data = plmaPACS, aes(label = Settlement)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Palma 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colp,
+                    labels = clasp) +
+  coord_sf(datum = st_crs(total))
+
+# crop by concession area
+
+B_class15Total <- crop(B_class15buf, total)
+B_class15Total <- terra::mask(B_class15Total, st_zm(total))
+
+
+# RStoolbox - Palma 2008
+
+trainPlma2008    <- spatSample(plma2008_train, size = 8000, method = "random")
+table(as.character(trainPlma2008$Classname))
+trainPlma2008xy  <- as.matrix(geom(trainPlma2008)[,c('x','y')])
+trainPlma08        <- extract(plma2008[[3:5]], trainPlma2008xy)
+trainPlma08df      <- data.frame(class = trainPlma2008$Classname, trainPlma08)
+trainPlma08dfdf2     <- cbind(trainPlma08df, trainPlma2008xy)
+trainPlma08SF       <- st_as_sf(trainPlma08dfdf2, coords = c("x", "y"), crs = moz_crs)
+
+B_class08      <- superClass(plma2008[[3:5]], trainPlma08SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+B_classdf08    <- as.data.frame(B_class08$map, xy = TRUE)
+B_class08
+B_class08buf <- crop(B_class08$map, total_buf)
+B_class08buf <- mask(B_class08$map, total_buf)
+B_class08bufdf    <- as.data.frame(B_class08buf, xy = TRUE)
+B_class08bufdf_nna <- na.omit(B_class08bufdf)
+
+ggplot() +
+  geom_tile(data = B_class08bufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = total, fill = NA, colour = "black", size = 1) +
+  geom_sf(data = plmaPACS, fill = NA) +
+  geom_sf_text(data = plmaPACS, aes(label = Settlement)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Palma 2008 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colp,
+                    labels = clasp) +
+  coord_sf(datum = st_crs(total))
+
+# crop by concession area
+
+B_class08Total <- crop(B_class08buf, total)
+B_class08Total <- terra::mask(B_class08Total, st_zm(total))
+
+# balama
+
+# Balma 2021
+
+trainblma2021    <- spatSample(blma2021_train, 8000, method = "random")
+table(as.character(trainblma2021$Classname))
+trainblma2021xy  <- as.matrix(geom(trainblma2021)[,c('x','y')])
+trainblma21      <- extract(blma2021[[3:6]], trainblma2021xy)
+trainblma21df      <- data.frame(class = trainblma2021$Classname, trainblma21)
+trainblma21df2     <- cbind(trainblma21df, trainblma2021xy)
+trainblma21SF       <- st_as_sf(trainblma21df2, coords = c("x", "y"), crs = moz_crs)
+
+Blma2021_class      <- superClass(blma2021[[4:6]], trainblma21SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Blma2021_classdf    <- as.data.frame(Blma2021_class$map, xy = TRUE)
+Blma2021_class
+Blma2021_classbuf <- crop(Blma2021_class$map, syrah_buf)
+Blma2021_classbuf <- mask(Blma2021_class$map, syrah_buf)
+writeRaster(Blma2021_classbuf, file.path("~/results/output", "Balama2021class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+Blma2021_classbufdf    <- as.data.frame(Blma2021_classbuf, xy = TRUE)
+Blma2021_classbufdf_nna <- na.omit(Blma2021_classbufdf)
+
+ggplot() +
+  geom_tile(data = Blma2021_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = syrah, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = blmaPACS, fill = NA) +
+  geom_sf_text(data = blmaPACS, aes(label = NomeN1)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Balama 2021 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colb,
+                    labels = clasb) +
+  coord_sf(datum = st_crs(syrah))
+
+# crop by concession area
+
+Blma2021_classSyrah <- crop(Blma2021_classbuf, syrah)
+Blma2021_classSyrah <- mask(Blma2021_classSyrah, st_zm(syrah))
+
+# Balma 2015
+
+trainblma2015    <- spatSample(blma2015_train, 8000, method = "random")
+table(as.character(trainblma2015$Classname))
+trainblma2015xy  <- as.matrix(geom(trainblma2015)[,c('x','y')])
+trainblma15      <- extract(blma2015[[3:6]], trainblma2015xy)
+trainblma15df      <- data.frame(class = trainblma2015$Classname, trainblma15)
+trainblma15df2     <- cbind(trainblma15df, trainblma2015xy)
+trainblma15SF       <- st_as_sf(trainblma15df2, coords = c("x", "y"), crs = moz_crs)
+
+
+Blma2015_class      <- superClass(blma2015[[4:6]], trainblma15SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Blma2015_classdf    <- as.data.frame(Blma2015_class$map, xy = TRUE)
+Blma2015_class
+Blma2015_classbuf <- crop(Blma2015_class$map, syrah_buf)
+Blma2015_classbuf <- mask(Blma2015_class$map, syrah_buf)
+writeRaster(Blma2015_classbuf, file.path("~/results/output", "Balama2015class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+Blma2015_classbufdf    <- as.data.frame(Blma2015_classbuf, xy = TRUE)
+Blma2015_classbufdf_nna <- na.omit(Blma2015_classbufdf)
+
+ggplot() +
+  geom_tile(data = Blma2015_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = syrah, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = blmaPACS, fill = NA) +
+  geom_sf_text(data = blmaPACS, aes(label = NomeN1)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Balama 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colb,
+                    labels = clasb) +
+  coord_sf(datum = st_crs(syrah))
+
+# crop by concession area
+
+Blma2015_classSyrah <- crop(Blma2015_classbuf, syrah)
+Blma2015_classSyrah <- mask(Blma2015_classSyrah, st_zm(syrah))
+
+
+# Balma 2009
+
+trainblma2009    <- spatSample(blma2009_train, 6000, method = "random")
+table(as.character(trainblma2009$Classname))
+trainblma2009xy  <- as.matrix(geom(trainblma2009)[,c('x','y')])
+trainblma09      <- extract(blma2009[[3:5]], trainblma2009xy)
+trainblma09df      <- data.frame(class = trainblma2009$Classname, trainblma09)
+trainblma09df2     <- cbind(trainblma09df, trainblma2009xy)
+trainblma09SF       <- st_as_sf(trainblma09df2, coords = c("x", "y"), crs = moz_crs)
+
+
+Blma2009_class      <- superClass(blma2009[[3:5]], trainblma09SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Blma2009_class
+Blma2009_classbuf <- crop(Blma2009_class$map, syrah_buf)
+Blma2009_classbuf <- mask(Blma2009_class$map, syrah_buf)
+Blma2009_classbufdf    <- as.data.frame(Blma2009_classbuf, xy = TRUE)
+Blma2009_classbufdf_nna <- na.omit(Blma2009_classbufdf)
+
+ggplot() +
+  geom_tile(data = Blma2009_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = syrah, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = blmaPACS, fill = NA) +
+  geom_sf_text(data = blmaPACS, aes(label = NomeN1)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Balama 2009 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colb,
+                    labels = clasb) +
+  coord_sf(datum = st_crs(syrah))
+
+# crop by concession area
+
+Blma2009_classSyrah <- crop(Blma2009_classbuf, syrah)
+Blma2009_classSyrah <- mask(Blma2009_classSyrah, st_zm(syrah))
+
+# Ancuabe 2020
+
+trainancb2020    <- spatSample(ancb2020_train, 8000, method = "random")
+table(as.character(trainancb2020$Classname))
+trainancb2020xy  <- as.matrix(geom(trainancb2020)[,c('x','y')])
+trainancb20      <- extract(ancb2020[[4:6]], trainancb2020xy)
+trainancb20df      <- data.frame(class = trainancb2020$Classname, trainancb20)
+trainancb20df2     <- cbind(trainancb20df, trainancb2020xy)
+trainancb20SF       <- st_as_sf(trainancb20df2, coords = c("x", "y"), crs = moz_crs)
+
+
+Ancb2020_class      <- superClass(ancb2020[[4:6]], trainancb20SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Ancb2020_classdf    <- as.data.frame(Ancb2020_class$map, xy = TRUE)
+Ancb2020_class
+Ancb2020_classbuf <- crop(Ancb2020_class$map, gk_buf)
+Ancb2020_classbuf <- mask(Ancb2020_class$map, gk_buf)
+writeRaster(Ancb2020_classbuf, file.path("~/results/output", "Ancuabe2020class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+Ancb2020_classbufdf    <- as.data.frame(Ancb2020_classbuf, xy = TRUE)
+Ancb2020_classbufdf_nna <- na.omit(Ancb2020_classbufdf)
+
+ggplot() +
+  geom_tile(data = Ancb2020_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = gk, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = ancbPACS, fill = NA) +
+  geom_sf_text(data = ancbPACS, aes(label = Community)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Ancuabe 2020 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colp,
+                    labels = clasp) +
+  coord_sf(datum = st_crs(gk))
+
+# crop by concession area
+
+Ancb2020_classgk <- crop(Ancb2020_classbuf, gk)
+Ancb2020_classgk <- mask(Ancb2020_classgk, st_zm(gk))
+
+# Ancuabe 2015
+
+trainancb2015    <- spatSample(ancb2015_train, 8000, method = "random")
+table(as.character(trainancb2015$Classname))
+trainancb2015xy  <- as.matrix(geom(trainancb2015)[,c('x','y')])
+trainancb15      <- extract(ancb2015[[4:6]], trainancb2015xy)
+trainancb15df      <- data.frame(class = trainancb2015$Classname, trainancb15)
+trainancb15df2     <- cbind(trainancb15df, trainancb2015xy)
+trainancb15SF       <- st_as_sf(trainancb15df2, coords = c("x", "y"), crs = moz_crs)
+
+
+Ancb2015_class      <- superClass(ancb2015[[4:6]], trainancb15SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Ancb2015_classdf    <- as.data.frame(Ancb2015_class$map, xy = TRUE)
+Ancb2015_class
+Ancb2015_classbuf <- crop(Ancb2015_class$map, gk_buf)
+Ancb2015_classbuf <- mask(Ancb2015_class$map, gk_buf)
+writeRaster(Ancb2015_classbuf, file.path("~/results/output", "Ancuabe2015class.tif"),
+            overwrite=TRUE, filetype="GTiff")
+Ancb2015_classbufdf    <- as.data.frame(Ancb2015_classbuf, xy = TRUE)
+Ancb2015_classbufdf_nna <- na.omit(Ancb2015_classbufdf)
+
+ggplot() +
+  geom_tile(data = Ancb2015_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = gk, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = ancbPACS, fill = NA) +
+  geom_sf_text(data = ancbPACS, aes(label = Community)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Ancuabe 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colb,
+                    labels = clasb) +
+  coord_sf(datum = st_crs(gk))
+
+# crop by concession area
+
+Ancb2015_classgk <- crop(Ancb2015_classbuf, gk)
+Ancb2015_classgk <- mask(Ancb2015_classgk, st_zm(gk))
+
+
+# Ancuabe 2009
+
+trainancb2009    <- spatSample(ancb2009_train, 8000, method = "random")
+table(as.character(trainancb2009$Classname))
+trainancb2009xy  <- as.matrix(geom(trainancb2009)[,c('x','y')])
+trainancb09      <- extract(ancb2009[[3:5]], trainancb2009xy)
+trainancb09df      <- data.frame(class = trainancb2009$Classname, trainancb09)
+trainancb09df2     <- cbind(trainancb09df, trainancb2009xy)
+trainancb09SF       <- st_as_sf(trainancb09df2, coords = c("x", "y"), crs = moz_crs)
+Ancb2009_class      <- superClass(ancb2009[[4:6]], trainancb09SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
+Ancb2009_classdf    <- as.data.frame(Ancb2009_class$map, xy = TRUE)
+Ancb2009_class
+Ancb2009_classbuf <- crop(Ancb2009_class$map, gk_buf)
+Ancb2009_classbuf <- mask(Ancb2009_classbuf, gk_buf)
+Ancb2009_classbufdf    <- as.data.frame(Ancb2009_classbuf, xy = TRUE)
+Ancb2009_classbufdf_nna <- na.omit(Ancb2009_classbufdf)
+
+ggplot() +
+  geom_tile(data = Ancb2009_classbufdf, aes(x = x, y = y, fill = class_value)) +
+  geom_sf(data = gk, fill=NA, colour = "black", size = 1) +
+  geom_sf(data = ancbPACS, fill = NA) +
+  geom_sf_text(data = ancbPACS, aes(label = Community)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Ancuabe 2009 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = colb,
+                    labels = clasb) +
+  coord_sf(datum = st_crs(gk))
+
+# crop by concession area
+
+Ancb2009_classgk <- crop(Ancb2009_classbuf, gk)
+Ancb2009_classgk <- mask(Ancb2009_classgk, st_zm(gk))
+plot(Ancb2009_classgk)
+```
+
+## change detection
+
+```{r}
+# all the vegetation has a more or less similar ndvi values. Difference betwn
+# ranges is quite small. It can all be considered sparse vegetation. The benefit
+# of learning about landscape.
+
+# Change maps
+# Palma
+# 2020 - 2015
+plma20_15 <-  B_classbuf - B_class15buf
+plot(plma20_08)
+plma20_08 <- B_classbuf - B_class08buf
+
+plot(blma2021_ndvi-blma2009_ndvi)
+
+# Balama
+
+
+
+# Ancuabe
+
+
+
+#palma
+
+freq(B_classbuf)*0.0009
+freq(B_class15buf)*0.0009
+freq(B_class08buf)*0.0009
+
+freq(B_classTotal)*0.0009
+freq(B_class15Total)*0.0009
+freq(B_class08Total)*0.0009
+
+# balama
+
+freq(Blma2021_classbuf)*0.0009
+freq(Blma2015_classbuf)*0.0009
+freq(Blma2009_classbuf)*0.0009
+
+freq(Blma2021_classSyrah)*0.0009
+freq(Blma2015_classSyrah)*0.0009
+freq(Blma2009_classSyrah)*0.0009
+
+# ancuabe
+
+freq(Ancb2020_classbuf)*0.0009
+freq(Ancb2015_classbuf)*0.0009
+freq(Ancb2009_classbuf)*0.0009
+
+freq(Ancb2020_classgk)*0.0009
+freq(Ancb2015_classgk)*0.0009
+freq(Ancb2009_classgk)*0.0009
+
+```
+
