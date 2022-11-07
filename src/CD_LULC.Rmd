@@ -158,6 +158,8 @@ aoi_L8  <- function(QAband, bands17, aoi) {
   return(aoi_cropSV)
 }
 
+#TODO use if else and for loop for chunk below?
+
 aois <- function(aoi_fun, qaband, bands17, aoi) {
   sa_aoi        <- list(
     "blma2021"  = aoi_fun(qaband[[1]], bands17[[1]], aoi[[1]]),
@@ -177,31 +179,16 @@ aois <- function(aoi_fun, qaband, bands17, aoi) {
 }
 
 aois_clean <- aois(aoi_L8, qa_CAT, sa_bands, sa)
-aois_clean
 
 aois_clean_bandnames <- function(aois_list) {
   bandlist <- aois_list
-  names(bandlist[[1]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[1]),
-                                   names(bandlist[[1]][[1:7]]))
-  names(bandlist[[2]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[2]),
-                                   names(bandlist[[2]][[1:7]]))
-  names(bandlist[[3]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[3]),
-                                   names(bandlist[[3]][[1:7]]))
-  names(bandlist[[4]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[4]),
-                                   names(bandlist[[4]][[1:7]]))
-  names(bandlist[[5]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[5]),
-                                   names(bandlist[[5]][[1:7]]))
-  names(bandlist[[6]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[6]),
-                                   names(bandlist[[6]][[1:7]]))
+  for (i in 1:length(bandlist)) {
+  names(bandlist[[i]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[i]),
+                                   names(bandlist[[i]][[1:7]]))
+  }
   return(bandlist)
 }
-
 aois_final <- aois_clean_bandnames(aois_clean)
 aois_final
 
@@ -214,79 +201,36 @@ aois_final
 # couldn't find how to do that in R. Perhaps additional benefit of GEE is that
 # it is more self-contained?
 
-comps   <- function(bands17, x, y, z) {
-  comps <-c(bands17[[x]], bands17[[y]], bands17[[z]])
+comp   <- function(bands17, x, y, z) {
+  comps    <- c(bands17[[x]], bands17[[y]], bands17[[z]])
   return(comps)
 }
 
-aois_comps <- list("blma2021_b543" = comps(aois_final[[1]], 5, 4, 3),
-                   "blma2015_b543" = comps(aois_final[[2]], 5, 4, 3),
-                   "blma2021_b654" = comps(aois_final[[1]], 6, 5, 4),
-                   "blma2015_b654" = comps(aois_final[[2]], 6, 5, 4),
-                   "ancbe2020_b543" = comps(aois_final[[3]], 5, 4, 3),
-                   "ancbe2015_b543" = comps(aois_final[[4]], 5, 4, 3),
-                   "ancbe2020_b654" = comps(aois_final[[3]], 6, 5, 4),
-                   "ancbe2015_b654" = comps(aois_final[[4]], 6, 5, 4),
-                   "plma2020_b543" = comps(aois_final[[5]], 5, 4, 3),
-                   "plma2015_b543" = comps(aois_final[[6]], 5, 4, 3),
-                   "plma2020_b654" = comps(aois_final[[5]], 6, 5, 4),
-                   "plma2015_b654" = comps(aois_final[[6]], 6, 5, 4))
-aois_comps
-
-aois_compsDummy <- aois_comps[1:2]
-aois_compsDummy # start here - saving
-aois_compsDummy[[1]]
-
-X <- writeRaster(aois_compsDummy$blma2021_b543,
-                 file.path("~/results/output", names(aois_compsDummy[[1]])),
+aois_RGB <- function(bands17) {
+  aois_comp <- list("blma2021_b543" = comp(bands17[[1]], 5, 4, 3),
+                   "blma2015_b543" = comp(bands17[[2]], 5, 4, 3),
+                   "blma2021_b654" = comp(bands17[[1]], 6, 5, 4),
+                   "blma2015_b654" = comp(bands17[[2]], 6, 5, 4),
+                   "ancbe2020_b543" = comp(bands17[[3]], 5, 4, 3),
+                   "ancbe2015_b543" = comp(bands17[[4]], 5, 4, 3),
+                   "ancbe2020_b654" = comp(bands17[[3]], 6, 5, 4),
+                   "ancbe2015_b654" = comp(bands17[[4]], 6, 5, 4),
+                   "plma2020_b543" = comp(bands17[[5]], 5, 4, 3),
+                   "plma2015_b543" = comp(bands17[[6]], 5, 4, 3),
+                   "plma2020_b654" = comp(bands17[[5]], 6, 5, 4),
+                   "plma2015_b654" = comp(bands17[[6]], 6, 5, 4))
+  for (i in 1:length(aois_comp)) {
+  writeRaster(aois_comp[[i]],
+                 file.path("~/results/output", 
+                           names(aois_comp[i])),
                  overwrite=TRUE,
                  filetype="GTiff")
-X
+  }
+  return(aois_comp)
+}
 
-??terra::writeRaster
-
-blma2021_b543 <- comps(blma2021, 5, 4, 3)
-writeRaster(blma2021_b543, file.path("~/results/output", "blma2021_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-blma2015_b543 <- comps(blma2015, 5, 4, 3)
-writeRaster(blma2015_b543, file.path("~/results/output", "blma2015_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-blma2021_b654 <- comps(blma2021, 6, 5, 4)
-writeRaster(blma2021_b654, file.path("~/results/output", "blma2021_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-blma2015_b654 <- comps(blma2015, 6, 5, 4)
-writeRaster(blma2015_b654, file.path("~/results/output", "blma2015_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-
-plma2020_b543 <- comps(plma2020, 5, 4, 3)
-writeRaster(plma2020_b543, file.path("~/results/output", "plma2020_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-plma2015_b543 <- comps(plma2015, 5, 4, 3)
-writeRaster(plma2015_b543, file.path("~/results/output", "plma2015_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-plma2020_b654 <- comps(plma2020, 6, 5, 4)
-writeRaster(plma2020_b654, file.path("~/results/output", "plma2020_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-plma2015_b654 <- comps(plma2015, 6, 5, 4)
-writeRaster(plma2015_b654, file.path("~/results/output", "plma2015_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-
-ancb2020_b543 <- comps(ancb2020, 5, 4, 3)
-writeRaster(ancb2020_b543, file.path("~/results/output", "ancb2020_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-ancb2015_b543 <- comps(ancb2015, 5, 4, 3)
-writeRaster(ancb2015_b543, file.path("~/results/output", "ancb2015_b543.tif"),
-            overwrite=TRUE, filetype="GTiff")
-ancb2020_b654 <- comps(ancb2020, 6, 5, 4)
-writeRaster(ancb2020_b654, file.path("~/results/output", "ancb2020_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-ancb2015_b654 <- comps(ancb2015, 6, 5, 4)
-writeRaster(ancb2015_b654, file.path("~/results/output", "ancb2015_b654.tif"),
-            overwrite=TRUE, filetype="GTiff")
-
-plotRGB(plma2008_b432, r = 1, g = 2, b = 3, stretch = "lin")
-plot(total, add = TRUE, col=NA)
-
+aois_comp <- aois_RGB(aois_final)
+aois_final
 
 indices <- function(bands17, x, y) {
   bandx <- bands17[[x]]
@@ -295,27 +239,28 @@ indices <- function(bands17, x, y) {
   return(indices)
 }
 
+ndvi_fun <- function(bands17) {
+  ndvi <- list("blma2021_ndvi" = indices(bands17[[1]], 5, 4),
+     "blma2015_ndvi" = indices(bands17[[2]], 5, 4),
+     "ancb2020_ndvi" = indices(bands17[[3]], 5, 4),
+     "ancb2015_ndvi" = indices(bands17[[4]], 5, 4),
+     "plma2020_ndvi" = indices(bands17[[5]], 5, 4),
+     "plma2015_ndvi" = indices(bands17[[6]], 5, 4))
+  
+  for (i in 1:length(ndvi)) {
+  writeRaster(ndvi[[i]],
+                 file.path("~/results/output", names(ndvi[i])),
+                 overwrite=TRUE,
+                 filetype="GTiff")
+  }
+  return(ndvi)
+}
+aois_ndvi <- ndvi_fun(aois_final)
+aois_ndvi
 
-blma2021_ndvi <- indices(blma2021, 5, 4)
-writeRaster(blma2021_ndvi, file.path("~/results/output", "blma2021_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
-blma2015_ndvi <- indices(blma2015, 5, 4)
-writeRaster(blma2015_ndvi, file.path("~/results/output", "blma2015_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
 
-plma2020_ndvi <- indices(plma2020, 5, 4)
-writeRaster(plma2020_ndvi, file.path("~/results/output", "plma2020_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
-plma2015_ndvi <- indices(plma2015, 5, 4)
-writeRaster(plma2015_ndvi, file.path("~/results/output", "plma2015_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
+# start here
 
-ancb2020_ndvi <- indices(ancb2020, 5, 4)
-writeRaster(ancb2020_ndvi, file.path("~/results/output", "ancb2020_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
-ancb2015_ndvi <- indices(ancb2015, 5, 4)
-writeRaster(ancb2015_ndvi, file.path("~/results/output", "ancb2015_ndvi.tif"),
-            overwrite=TRUE, filetype="GTiff")
 
 ## model training
 
