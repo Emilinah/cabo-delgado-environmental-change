@@ -3,16 +3,19 @@ title: "Land use land cover change due to green extractivism in Mozambique"
 author: "Emilinah Namaganda"
 date: "2022-11-01"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent
+printing of the R code that generated the plot.
 
 ## Loading the necessary libraries
 
-```{r cars}
+```{r}
 library(sf) 
 library(lintr) 
 library(rpart) 
@@ -27,216 +30,220 @@ library(rgdal)
 library(terra)
 ```
 
-## Preprocessing Twigg, GK and Total images
+```{r}
+# regularly remove temporary files
+
+tmpFiles(current=TRUE, orphan=TRUE, old=TRUE, remove=FALSE)
+
+```
+
+
+## Preprocessing Twigg (Balama), GK (Ancuabe) and Total (Palma) images
 
 ```{r}
 # loading relevant image bands -----------
 
-
-bands17 <- function(images) {
-  bands17 <- list.files(images,
-    pattern = glob2rx("*B*"),
-    full.names = TRUE)
-  bands17 <- rast(bands17[1:7])
-  return(bands17)
+studyareas_bands17 <- function(folders_images) {
+  folders_all    <- list.dirs(folders_images)
+  images_all     <- folders_all[c(3:5, 7:9, 11)] 
+  bands_all      <- list.files(images_all, 
+                               pattern = glob2rx("*B*"), 
+                               full.names = TRUE)
+  bands_list     <- list("blma2021_b17" = bands_all[49:55],
+                     "blma2015_b17" = bands_all[9:15],
+                     "plma2020A_b17" = bands_all[25:31],
+                     "plma2020B_b17" = bands_all[41:47],
+                     "plma2015A_b17" = bands_all[17:23],
+                     "plma2015B_b17" = bands_all[1:7],
+                     "ancb2020_b17" = bands_all[33:39],
+                     "ancb2015_b17" = bands_all[9:15])
+  bands          <- lapply(bands_list, rast)
+  return(bands)
 }
-
-blma2021_b17 <- bands17("~/data/raw/images/2021/0609_165069")
-blma2015_b17 <- bands17("~/data/raw/images/2015/0524_165069")
+sa_bands <- studyareas_bands17("~/data/raw/images")
 
 
-plma2020A_b17 <- bands17("~/data/raw/images/2020/0521_165067")
-plma2020B_b17 <- bands17("~/data/raw/images/2020/0701_164068")
-plma2015A_b17 <- bands17("~/data/raw/images/2015/0609_165067")
-plma2015B_b17 <- bands17("~/data/raw/images/2015/0517_164068")
+# removing cloud cover pixels, re-projecting to correct 
+# coordinate reference system (CRS), cropping to area of interest
 
-ancb2020A_b17 <- bands17("~/data/raw/images/2020/0521_165069")
-ancb2020B_b17 <- bands17("~/data/raw/images/2020/0615_164069")
-ancb2015A_b17 <- bands17("~/data/raw/images/2015/0524_165069")
-ancb2015B_b17 <- bands17("~/data/raw/images/2015/0517_164069")
-
-# removing cloud cover pixels, re-projecting to correct CRS, crop to AOI ------
-
-moz_crs    <- "+init=EPSG:32737" # check why i need to re-run everything if i close R: message: external pointer is not valid.
-blma       <- vect("~/data/raw/mines/blma.shp", query = "SELECT POSTO FROM \"blma\"")
-blmaPACS  <- st_read("~/data/raw/mines/blmaPACS.shp", query = "SELECT NomeN1 FROM \"blmaPACS\"")
-syrah      <- st_read("~/data/raw/mines/syrah.shp",
-  query = "SELECT Mine FROM \"syrah\" WHERE FID = 0")
-syrah_buf  <- st_buffer(syrah, 9000)
-syrah_bufSV <- vect(as(syrah_buf, "Spatial"))
-
-plma       <- vect("~/data/raw/mines/plma.shp", query = "SELECT NAME_3 FROM \"plma\"")
-plmaPACS  <- st_read("~/data/raw/mines/plmaPACS.shp", query = "SELECT Settlement FROM \"plmaPACS\"")
-plot(plmaPACS)
-total      <- st_read("~/data/raw/mines/total.shp", query = "SELECT Name FROM \"total\" WHERE FID = 0")
-totalSV <- vect("~/data/raw/mines/total.shp", query = "SELECT Name FROM \"total\" WHERE FID = 0")
-total_buf  <- st_buffer(total, 12000)
-plot(total_buf)
-st_write(total_buf, file.path("~/results/output", "total_buf.shp"),
-            overwrite=TRUE)
-total_bufSV <- vect(as(total_buf, "Spatial"))
-totalAoi    <- crop(plma, total_bufSV) # created an extra AOI to eliminate the ocean from analysis
-
-ancb       <- vect("~/data/raw/mines/ancb.shp", query = "SELECT POSTO FROM \"ancb\"")
-ancbPACS  <- st_read("~/data/raw/mines/ancbPACS.shp", query = "SELECT Community FROM \"ancbPACS\"")
-gk      <- st_read("~/data/raw/mines/gk.shp",
-  query = "SELECT Mine FROM \"gk\" WHERE FID = 0")
-gk_buf  <- st_buffer(gk, 15000)
-
-?`mask,SpatRaster,SpatRaster-method`
-
-ggplot() +
-  geom_sf(data = total_buf) + 
-  geom_sf(data = total) +
-  coord_sf()
-
-colb <- c('darkorange', 'darkgreen', 'green', 'deepskyblue')
-colp <- c('darkorange', 'darkgreen', 'green', 'lightcyan', 'deepskyblue')
-clasb <- c("built & bare", "dense vegetation", "sparse vegetation", "water")
-clasp <- c("built & bare", "dense vegetation", "sparse vegetation", "wetland", "water")
-
-blma2021_qa            <- rast(
-  "~/data/raw/images/2021/0609_165069/LC08_L2SP_165069_20210609_20210615_02_T1_QA_PIXEL.TIF") 
-# check how to decode qa band in QGIS (open source).
-activeCat(blma2021_qa) <- 0
-
-blma2015_qa            <- rast(
-  "~/data/raw/images/2015/0524_165069/LC08_L2SP_165069_20150524_20200909_02_T1_QA_PIXEL.TIF") 
-activeCat(blma2015_qa) <- 0
-
-plma2020A_qa            <- rast(
-  "~/data/raw/images/2020/0521_165067/LC08_L2SP_165067_20200521_20200820_02_T1_QA_PIXEL.TIF") 
-# check how to decode qa band in QGIS (open source).
-activeCat(plma2020A_qa) <- 0
-
-plma2020B_qa            <- rast(
-  "~/data/raw/images/2020/0701_164068/LC08_L2SP_164068_20200701_20200913_02_T1_QA_PIXEL.TIF") 
-# check how to decode qa band in QGIS (open source).
-activeCat(plma2020B_qa) <- 0
-
-plma2015A_qa            <- rast(
-  "~/data/raw/images/2015/0609_165067/LC08_L2SP_165067_20150609_20200909_02_T1_QA_PIXEL.TIF") 
-activeCat(plma2015A_qa) <- 0
-
-plma2015B_qa            <- rast(
-  "~/data/raw/images/2015/0517_164068/LC08_L2SP_164068_20150517_20200909_02_T1_QA_PIXEL.TIF") 
-activeCat(plma2015B_qa) <- 0
+moz_crs    <- "+init=EPSG:32737"
 
 
-ancb2020A_qa            <- rast(
-  "~/data/raw/images/2020/0521_165069/LC08_L2SP_165069_20200521_20200820_02_T1_QA_PIXEL.TIF") 
-# check how to decode qa band in QGIS (open source).
-activeCat(ancb2020A_qa) <- 0
-ancb2020B_qa            <- rast(
-  "~/data/raw/images/2020/0615_164069/LC08_L2SP_164069_20200615_20200823_02_T1_QA_PIXEL.TIF") 
-# check how to decode qa band in QGIS (open source).
-activeCat(ancb2020B_qa) <- 0
+study_areas <- function(mine_areas) {
+  study_areas <- list.files(mine_areas, 
+                            pattern = "\\.shp$", 
+                            full.names = TRUE)
+  blma        <- vect(study_areas[2])
+  plma        <- vect(study_areas[5])
+  ancb        <- vect(study_areas[1])
+  return(list("blma" = blma, 
+              "plma" = plma, 
+              "ancb" = ancb))
+}
+sa <- study_areas("~/data/raw/mines")
 
-ancb2015A_qa            <- rast(
-  "~/data/raw/images/2015/0524_165069/LC08_L2SP_165069_20150524_20200909_02_T1_QA_PIXEL.TIF") 
-activeCat(ancb2015A_qa) <- 0
-ancb2015B_qa            <- rast(
-  "~/data/raw/images/2015/0517_164069/LC08_L2SP_164069_20150517_20200909_02_T1_QA_PIXEL.TIF") 
-activeCat(ancb2015B_qa) <- 0
+# totalAoi    <- crop(plma, total_bufSV) # created an extra AOI to 
+# eliminate the ocean from analysis #TODO
 
 
-aoi_L8             <- function(QAband, bands17, aoi_SF, aoi_vect) {
+study_mines <- function(mine_areas) {
+  mines <- list.files(mine_areas, 
+                      pattern = "\\.shp$", 
+                      full.names = TRUE)
+  twigg <- st_read(mines[8], 
+                   query = "SELECT Mine FROM \"twigg\" WHERE FID = 0")
+  total <- st_read(mines[6], 
+                   query = "SELECT Name FROM \"total\" WHERE FID = 0")
+  gk    <- st_read(mines[3], 
+                   query = "SELECT Mine FROM \"gk\" WHERE FID = 0")
+  return(list("twigg" = twigg, 
+              "total" = total, 
+              "gk" = gk))
+}
+mines <- study_mines("~/data/raw/mines")
+
+
+study_pacs <- function(mine_areas) {
+  PACs       <- list.files(mine_areas, 
+                     pattern = "\\.shp$", 
+                     full.names = TRUE)
+  twigg_pacs <- st_read(PACs[9], 
+                        query = "SELECT NomeN1 FROM \"twiggPACS\"")
+  total_pacs <- st_read(PACs[7], 
+                        query = "SELECT Settlement FROM \"totalPACS\"")
+  gk_pacs    <- st_read(PACs[4], 
+                     query = "SELECT Community FROM \"gkPACS\"")
+  return(list("twigg_pacs" = twigg_pacs, 
+              "total_pacs" = total_pacs, 
+              "gk_pacs" = gk_pacs))
+}
+pacs <- study_pacs("~/data/raw/mines")
+
+
+sa_qabands <- function(mine_areas) {
+  all_dir  <- list.dirs(mine_areas)
+  sa_dir   <- all_dir[c(3:5, 7:9, 11)]
+  qa_bands <- list.files(sa_dir, 
+                         pattern = "\\PIXEL.TIF$",
+                         full.names = TRUE)
+  sa_qa    <- list("blma2021_qa" = qa_bands[7],
+                     "blma2015_qa" = qa_bands[2],
+                     "plma2020A_qa" = qa_bands[4],
+                     "plma2020B_qa" = qa_bands[6],
+                     "plma2015A_qa" = qa_bands[3],
+                     "plma2015B_qa" = qa_bands[1],
+                     "ancbe2020_qa" = qa_bands[5],
+                     "ancbe2015_qa" = qa_bands[2])
+  sa_qarast <- lapply(sa_qa, rast)
+  return(sa_qarast)
+}
+qa_bands <- sa_qabands("~/data/raw/images")
+
+
+qa_bandsCAT <- function(qa) {
+  qab            <- qa[[1]]
+  activeCat(qab) <- 0
+  return(qab)
+}
+qa_CAT <- lapply(qa_bands, qa_bandsCAT)
+
+
+aoi_L8  <- function(QAband, bands17, aoi) {
   cloudmask     <- classify(QAband, rbind(c(21824, 21824), c(21952, 21952)),
-                         others = NA) # TODO open issue in Terra others=NULL doesn't work anymore
-  b17_clear     <- mask(bands17, cloudmask)
-  b17_clearProj <- project(b17_clear, moz_crs)
-  aoi_crop      <- crop(b17_clearProj, aoi_SF, snap = "near", mask = TRUE)
-  aoi_cropSV    <- mask(aoi_crop, aoi_vect)
-  return(aoi_cropSV)
-}
-
-aoi_L5          <- function(QAband, bands17, aoi_SF, aoi_vect) {
-  cloudmask     <- classify(QAband, rbind(c(5440, 5440), c(5504, 5504)),
                          others = NA)
   b17_clear     <- mask(bands17, cloudmask)
   b17_clearProj <- project(b17_clear, moz_crs)
-  aoi_crop      <- crop(b17_clearProj, aoi_SF, snap = "near", mask = TRUE)
-  aoi_cropSV    <- mask(aoi_crop, aoi_vect)
+  aoi_crop      <- crop(b17_clearProj, aoi, snap = "near", mask = TRUE)
+  aoi_cropSV    <- mask(aoi_crop, aoi)
   return(aoi_cropSV)
 }
 
-blma2021        <- aoi_L8(blma2021_qa, blma2021_b17, blma, blma)
-names(blma2021) <- gsub(
-  pattern = "LC08_L2SP_165069_20210609_20210615_02_T1_SR",
-  replacement = "blma2021",
-  names(blma2021))
+aois <- function(aoi_fun, qaband, bands17, aoi) {
+  sa_aoi        <- list(
+    "blma2021"  = aoi_fun(qaband[[1]], bands17[[1]], aoi[[1]]),
+    "blma2015"  = aoi_fun(qaband[[2]], bands17[[2]], aoi[[1]]),
+    "plma2020A" = aoi_fun(qaband[[3]], bands17[[3]], aoi[[2]]),
+    "plma2020B" = aoi_fun(qaband[[4]], bands17[[4]], aoi[[2]]),
+    "plma2015A" = aoi_fun(qaband[[5]], bands17[[5]], aoi[[2]]),
+    "plma2015B" = aoi_fun(qaband[[6]], bands17[[6]], aoi[[2]]),
+    "ancbe2020" = aoi_fun(qaband[[7]], bands17[[7]], aoi[[3]]),
+    "ancbe2015" = aoi_fun(qaband[[8]], bands17[[8]], aoi[[3]]))
+  plma2020_2015  <- list(
+    "plma2020" = mosaic(sa_aoi$plma2020A, sa_aoi$plma2020B),
+    "plma2015" = mosaic(sa_aoi$plma2015A, sa_aoi$plma2015A))
+  saAOI_combined <- c(sa_aoi, plma2020_2015)
+  saAOI          <- saAOI_combined[-c(3:6)]
+  return(saAOI)
+}
 
-blma2015        <- aoi_L8(blma2015_qa, blma2015_b17, blma, blma)
-names(blma2015) <- gsub(
-  pattern = "LC08_L2SP_165069_20150524_20200909_02_T1_SR",
-  replacement = "blma2015",
-  names(blma2015))
+aois_clean <- aois(aoi_L8, qa_CAT, sa_bands, sa)
+aois_clean
 
+aois_clean_bandnames <- function(aois_list) {
+  bandlist <- aois_list
+  names(bandlist[[1]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[1]),
+                                   names(bandlist[[1]][[1:7]]))
+  names(bandlist[[2]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[2]),
+                                   names(bandlist[[2]][[1:7]]))
+  names(bandlist[[3]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[3]),
+                                   names(bandlist[[3]][[1:7]]))
+  names(bandlist[[4]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[4]),
+                                   names(bandlist[[4]][[1:7]]))
+  names(bandlist[[5]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[5]),
+                                   names(bandlist[[5]][[1:7]]))
+  names(bandlist[[6]][[1:7]]) <- gsub(pattern = ".*SR",
+                                   replacement = names(bandlist[6]),
+                                   names(bandlist[[6]][[1:7]]))
+  return(bandlist)
+}
 
-plma2020A        <- aoi_L8(plma2020A_qa, plma2020A_b17, plma, plma)
-names(plma2020A) <- gsub(
-  pattern = "LC08_L2SP_165067_20200521_20200820_02_T1_SR",
-  replacement = "plma2020A",
-  names(plma2020A))
-plma2020B        <- aoi_L8(plma2020B_qa, plma2020B_b17, plma, plma)
-names(plma2020B) <- gsub(
-  pattern = "LC08_L2SP_164068_20200701_20200913_02_T1_SR",
-  replacement = "plma2020B",
-  names(plma2020B))
-plma2020 <- mosaic(plma2020A, plma2020B)
-
-plma2015A        <- aoi_L8(plma2015A_qa, plma2015A_b17, plma, plma)
-names(plma2015A) <- gsub(
-  pattern = "LC08_L2SP_165067_20150609_20200909_02_T1_SR",
-  replacement = "plma2015A",
-  names(plma2015A))
-plma2015B        <- aoi_L8(plma2015B_qa, plma2015B_b17, plma, plma)
-names(plma2015B) <- gsub(
-  pattern = "LC08_L2SP_164068_20150517_20200909_02_T1_SR",
-  replacement = "plma2015B",
-  names(plma2015B))
-plma2015 <- mosaic(plma2015A, plma2015B)
-
-
-ancb2020A        <- aoi_L8(ancb2020A_qa, ancb2020A_b17, ancb, ancb)
-names(ancb2020A) <- gsub(
-  pattern = "LC08_L2SP_165069_20200521_20200820_02_T1_SR",
-  replacement = "ancb2020A",
-  names(ancb2020A))
-ancb2020B        <- aoi_L8(ancb2020B_qa, ancb2020B_b17, ancb, ancb)
-names(ancb2020B) <- gsub(
-  pattern = "LC08_L2SP_164069_20200615_20200823_02_T1_SR",
-  replacement = "ancb2020B",
-  names(ancb2020B))
-ancb2020 <- mosaic(ancb2020A, ancb2020B)
-
-ancb2015A        <- aoi_L8(ancb2015A_qa, ancb2015A_b17, ancb, ancb)
-names(ancb2015A) <- gsub(
-  pattern = "LC08_L2SP_165069_20150524_20200909_02_T1_SR",
-  replacement = "ancb2015A",
-  names(ancb2015A))
-ancb2015B        <- aoi_L8(ancb2015B_qa, ancb2015B_b17, ancb, ancb)
-names(ancb2015B) <- gsub(
-  pattern = "LC08_L2SP_164069_20150517_20200909_02_T1_SR",
-  replacement = "ancb2015B",
-  names(ancb2020B))
-ancb2015 <- mosaic(ancb2015A, ancb2015B)
+aois_final <- aois_clean_bandnames(aois_clean)
+aois_final
 
 ```
 
-## Classifying the images
+## Classifying the images (Fri/Sun/Mon)
 
 ```{r}
 # composites and indices exported to arcgis to create training samples. 
 # couldn't find how to do that in R. Perhaps additional benefit of GEE is that
 # it is more self-contained?
 
-par(mfrow = c(1, 2))
-
 comps   <- function(bands17, x, y, z) {
   comps <-c(bands17[[x]], bands17[[y]], bands17[[z]])
   return(comps)
 }
+
+aois_comps <- list("blma2021_b543" = comps(aois_final[[1]], 5, 4, 3),
+                   "blma2015_b543" = comps(aois_final[[2]], 5, 4, 3),
+                   "blma2021_b654" = comps(aois_final[[1]], 6, 5, 4),
+                   "blma2015_b654" = comps(aois_final[[2]], 6, 5, 4),
+                   "ancbe2020_b543" = comps(aois_final[[3]], 5, 4, 3),
+                   "ancbe2015_b543" = comps(aois_final[[4]], 5, 4, 3),
+                   "ancbe2020_b654" = comps(aois_final[[3]], 6, 5, 4),
+                   "ancbe2015_b654" = comps(aois_final[[4]], 6, 5, 4),
+                   "plma2020_b543" = comps(aois_final[[5]], 5, 4, 3),
+                   "plma2015_b543" = comps(aois_final[[6]], 5, 4, 3),
+                   "plma2020_b654" = comps(aois_final[[5]], 6, 5, 4),
+                   "plma2015_b654" = comps(aois_final[[6]], 6, 5, 4))
+aois_comps
+
+aois_compsDummy <- aois_comps[1:2]
+aois_compsDummy # start here - saving
+aois_compsDummy[[1]]
+
+X <- writeRaster(aois_compsDummy$blma2021_b543,
+                 file.path("~/results/output", names(aois_compsDummy[[1]])),
+                 overwrite=TRUE,
+                 filetype="GTiff")
+X
+
+??terra::writeRaster
 
 blma2021_b543 <- comps(blma2021, 5, 4, 3)
 writeRaster(blma2021_b543, file.path("~/results/output", "blma2021_b543.tif"),
@@ -244,7 +251,6 @@ writeRaster(blma2021_b543, file.path("~/results/output", "blma2021_b543.tif"),
 blma2015_b543 <- comps(blma2015, 5, 4, 3)
 writeRaster(blma2015_b543, file.path("~/results/output", "blma2015_b543.tif"),
             overwrite=TRUE, filetype="GTiff")
-
 blma2021_b654 <- comps(blma2021, 6, 5, 4)
 writeRaster(blma2021_b654, file.path("~/results/output", "blma2021_b654.tif"),
             overwrite=TRUE, filetype="GTiff")
@@ -258,7 +264,6 @@ writeRaster(plma2020_b543, file.path("~/results/output", "plma2020_b543.tif"),
 plma2015_b543 <- comps(plma2015, 5, 4, 3)
 writeRaster(plma2015_b543, file.path("~/results/output", "plma2015_b543.tif"),
             overwrite=TRUE, filetype="GTiff")
-
 plma2020_b654 <- comps(plma2020, 6, 5, 4)
 writeRaster(plma2020_b654, file.path("~/results/output", "plma2020_b654.tif"),
             overwrite=TRUE, filetype="GTiff")
@@ -272,7 +277,6 @@ writeRaster(ancb2020_b543, file.path("~/results/output", "ancb2020_b543.tif"),
 ancb2015_b543 <- comps(ancb2015, 5, 4, 3)
 writeRaster(ancb2015_b543, file.path("~/results/output", "ancb2015_b543.tif"),
             overwrite=TRUE, filetype="GTiff")
-
 ancb2020_b654 <- comps(ancb2020, 6, 5, 4)
 writeRaster(ancb2020_b654, file.path("~/results/output", "ancb2020_b654.tif"),
             overwrite=TRUE, filetype="GTiff")
@@ -424,6 +428,12 @@ B_classbufdf_nna <- na.omit(B_classbufdf)
 # Raster pixels are placed at uneven horizontal intervals and will be shifted. 
 # Consider using geom_tile() instead.Check difference btn geomtile and geomraster
 
+par(mfrow = c(1, 2))
+colb <- c('darkorange', 'darkgreen', 'green', 'deepskyblue')
+colp <- c('darkorange', 'darkgreen', 'green', 'lightcyan', 'deepskyblue')
+clasb <- c("built & bare", "dense vegetation", "sparse vegetation", "water")
+clasp <- c("built & bare", "dense vegetation", "sparse vegetation", "wetland", "water")
+
 ggplot() +
   geom_tile(data = B_classbufdf_nna, aes(x = x, y = y, fill = class_value)) +
   geom_sf(data = total, colour = "black", fill = NA, size = 1) +
@@ -437,6 +447,12 @@ ggplot() +
                     values = colp,
                     labels = clasp) +
   coord_sf(datum = st_crs(total))
+
+ggplot() +
+  geom_sf(data = aois_clean$blma2021$LC08_L2SP_165069_20210609_20210615_02_T1_SR_B1) + 
+  geom_sf(data = mines$twigg) +
+  geom_sf(data = pacs$twigg_pacs) +
+  coord_sf()
 
 # crop by concession area
 
@@ -616,7 +632,6 @@ trainancb15df      <- data.frame(class = trainancb2015$Classname, trainancb15)
 trainancb15df2     <- cbind(trainancb15df, trainancb2015xy)
 trainancb15SF       <- st_as_sf(trainancb15df2, coords = c("x", "y"), crs = moz_crs)
 
-
 Ancb2015_class      <- superClass(ancb2015[[4:6]], trainancb15SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
 Ancb2015_classdf    <- as.data.frame(Ancb2015_class$map, xy = TRUE)
 Ancb2015_class
@@ -648,7 +663,7 @@ Ancb2015_classgk <- mask(Ancb2015_classgk, st_zm(gk))
 
 ```
 
-## change detection
+## change detection 
 
 ```{r}
 # all the vegetation has a more or less similar ndvi values. Difference betwn
