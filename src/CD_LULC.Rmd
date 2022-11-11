@@ -42,6 +42,9 @@ tmpFiles(current=TRUE, orphan=TRUE, old=TRUE, remove=F)
 
 ```{r}
 # loading relevant image bands -----------
+# TODO reorganise to start with ancb (not ancbe) and end with Plma
+# TODO change ancuabe abbreviation from ancbe to ancb
+# TODO start with the study areas and then input the bands close to the qa bands
 
 studyareas_bands17 <- function(folders_images) {
   bands_all      <- list.files(folders_images,
@@ -217,13 +220,14 @@ aois <- function(aoi_fun, qaband, bands17, aoi_post) {
     "ancbe2020" = mosaic(sa_aoi$ancbe2020A, sa_aoi$ancbe2020B),
     "ancbe2015" = mosaic(sa_aoi$ancbe2015A, sa_aoi$ancbe2015B),
     "plma2020" = mosaic(sa_aoi$plma2020A, sa_aoi$plma2020B),
-    "plma2015" = mosaic(sa_aoi$plma2015A, sa_aoi$plma2015A))
+    "plma2015" = mosaic(sa_aoi$plma2015A, sa_aoi$plma2015B))
   saAOI_combined <- c(sa_aoi, AncbPlma2020_2015)
   saAOI          <- saAOI_combined[-c(3:10)]
   return(saAOI)
 }
 aois_clean <- aois(aoi_L8, qa_CAT, sa_bands, sa_posts)
-
+#Warning message:
+#[mosaic] rasters did not align and were resampled
 
 aois_clean_bandnames <- function(aois_list) {
   bandlist <- aois_list
@@ -236,7 +240,6 @@ aois_clean_bandnames <- function(aois_list) {
 }
 aois_final <- aois_clean_bandnames(aois_clean)
 aois_final
-
 
 ```
 
@@ -314,50 +317,38 @@ aois_ndvi <- ndvi_fun(aois_final)
 trains <- list(
   "blma2021_train" = vect("~/data/temp/training-samples/blma2021_train500V3.shp"),
   "blma2015_train" = vect("~/data/temp/training-samples/blma2015_train500V2.shp"),
-  "plma2020_train" = vect("~/data/temp/training-samples/plma2020_train500Weq_4cls.shp"),
-  "plma2015_train" = vect("~/data/temp/training-samples/plma2015_train500_4clsv2.shp"),
   "ancb2020_train" = vect("~/data/temp/training-samples/ancb2020_train500.shp"),
-  "ancb2015_train" = vect("~/data/temp/training-samples/ancb2015_train500.shp"))
+  "ancb2015_train" = vect("~/data/temp/training-samples/ancb2015_train500.shp"),
+  "plma2020_train" = vect("~/data/temp/training-samples/plma2020_train500Weq_4cls.shp"),
+  "plma2015_train" = vect("~/data/temp/training-samples/plma2015_train500_4clsv2.shp"))
+
 
 # create training sample points from training sites data
+# create training model  
+# spatSample: In order to assure regularity when requesting a regular sample, 
+# the number of cells or points returned may not be exactly the same as the 
+# size requested (documentation Terra).
 
-samps <- function(train, aoi) {
-  Tsamps  <- spatSample(train, 4000, method = "random")
-  sampsXY <- as.matrix(geom(Tsamps)[,c('x','y')])
-  sampsdf <- extract(aoi, sampsXY)
-  samps   <- data.frame(class = Tsamps$Classname, sampsdf)
-  return(samps)
+samps <- function(train, image_aoi) {
+                set.seed(555)
+  Tsamps     <- spatSample(train, 1000, method = "regular")
+                print(table(as.character(Tsamps$Classname)))
+  sampsXY    <- as.matrix(geom(Tsamps)[,c('x','y')])
+  sampsdf    <- extract(image_aoi[[3:6]], sampsXY)
+  samps      <- data.frame(class = Tsamps$Classname, sampsdf)
+  sampsGeo   <- cbind(samps, sampsXY)
+  sampsGeoSF <- st_as_sf(sampsGeo, coords = c("x", "y"), crs = moz_crs)
+  return(sampsGeoSF)
 }
 
-blma2021_samps     <- samps(trains$blma2021_train, aois_final$blma2021[[3:6]])
-blma2021_samps
+study_samps <- mapply(trains, aois_final, FUN = samps, SIMPLIFY = F)
+names(study_samps) <- c("blma2021_samps",
+                        "blma2015_samps",
+                        "ancb2020_samps",
+                        "ancb2015_samps",
+                        "plma2020_samps",
+                        "plma2015_samps")
 
-blma2021_sampsDist <- table(as.character(blma2021_samps$class))
-blma2021_sampsDist
-write.table(blma2021_sampsDist, 
-            file.path("~/results/output", "blma2021_sampsDist.csv"))
-
-blma2015_samps     <- samps(blma2015_train, blma2015[[3:6]])
-str(blma2015_samps)
-blma2015_sampsDist <- table(as.character(blma2015_samps$class))
-blma2015_sampsDist
-write.table(blma2015_sampsDist, 
-            file.path("~/results/output", "blma2015_sampsDist.csv"))
-
-plma2020_samps     <- samps(plma2020_train, plma2020[[4:6]])
-plma2020_sampsDist <- table(as.character(plma2020_samps$class))
-plma2020_sampsDist
-write.table(plma2020_sampsDist, 
-            file.path("~/results/output", "plma2020_sampsDist.csv"))
-
-plma2015_samps     <- samps(plma2015_train, plma2015[[4:6]])
-str(plma2015_samps)
-plma2015_samps$class
-plma2015_sampsDist <- table(as.character(plma2015_samps$class))
-plma2015_sampsDist
-write.table(plma2015_sampsDist, 
-            file.path("~/results/output", "plma2015_sampsDist.csv"))
-rm(plma2015_samps)
 
 # inspect the spectral profiles of the training samples
 
@@ -375,14 +366,14 @@ lulc_cols <- list(cols_BlmaAncb = c('darkorange',
                                     'darkgreen', 
                                     'green', 
                                     'deepskyblue'),
-                  colp_Plma = c('darkorange', 
+                  cols_Plma = c('darkorange', 
                                 'darkgreen', 
                                 'green', 
                                 'lightcyan', 
                                 'deepskyblue'))
 
 sampsSP <- function(samps) {
-  sampsSP             <- aggregate(samps[, -1], list(samps$class), mean)
+  sampsSP             <- aggregate(st_drop_geometry(samps)[, -1], list(samps$class), mean)
   rownames(sampsSP)   <- sampsSP[, 1]
   sampsSP             <- sampsSP[, -1]
   names(sampsSP)[1:4] <- 1:4
@@ -392,34 +383,60 @@ sampsSP <- function(samps) {
   rownames(sampsSP)   <- NULL
   sampsSP             <- melt(sampsSP, id.vars = "bands", variable.name = "lulc")
   sampsSP$bands       <- as.numeric(sampsSP$bands)
-  sampsSP             <- ggplot(sampsSP, aes(bands, value)) +
-    geom_line(aes(color = lulc), size = 1) +
-    ggtitle("Spectral Profiles") +
-    labs(x = "Bands", y = "Reflectance") +
-    scale_colour_manual("LULC", 
-                    values = lulc_cols$colp_Plma,
-                    labels = lulc_classes$class_BlmaAncb)
   return(sampsSP)
 }
-sampsSP(blma2021_samps)
-sampsSP(blma2015_samps)
 
-sampsSP(plma2020_samps)
-sampsSP(plma2015_samps)
+allsampsSP <- lapply(study_samps, sampsSP)
 
 
-# create training model and classify image
+#TODO use if else statements to prevent repetition? or other ggplot way
 
-# Palma 2020
+sampsSPgraph             <- list(
+  "blma2021sp" = ggplot(allsampsSP[[1]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Balama 2021") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb),
+  "blma2015sp" = ggplot(allsampsSP[[2]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Balama 2015") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb),
+  "ancb2020sp" = ggplot(allsampsSP[[3]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Ancuabe 2020") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb),
+  "ancb2015sp" = ggplot(allsampsSP[[4]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Ancuabe 2015") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb),
+  "plma2020sp" = ggplot(allsampsSP[[5]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Palma 2020") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_Plma,
+                    labels = lulc_classes$class_Plma),
+  "plma2015sp" = ggplot(allsampsSP[[6]], aes(bands, value)) +
+    geom_line(aes(color = lulc), size = 1) +
+    ggtitle("Spectral Profile Palma 2015") +
+    labs(x = "Bands", y = "Reflectance") +
+    scale_colour_manual("LULC", 
+                    values = lulc_cols$cols_Plma,
+                    labels = lulc_classes$class_Plma)) 
 
-trainPlma2020    <- spatSample(plma2020_train, 8000, method = "random")
-table(as.character(trainPlma2020$Classname))
-trainPlma2020xy  <- as.matrix(geom(trainPlma2020)[,c('x','y')])
-trainPlma20      <- extract(plma2020[[3:6]], trainPlma2020xy)
-trainPlma20df    <- data.frame(class = trainPlma2020$Classname, trainPlma20)
-trainPlma20dfdf2 <- cbind(trainPlma20df, trainPlma2020xy)
-trainPlma20SF    <- st_as_sf(trainPlma20dfdf2, coords = c("x", "y"), crs = moz_crs)
 
+# classify image
 
 B_class      <- superClass(plma2020[[4:6]], trainPlma20SF, responseCol = "class", model = "mlc", trainPartition = 0.7)
 B_classdf    <- as.data.frame(B_class$map, xy = TRUE)
