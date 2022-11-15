@@ -401,8 +401,6 @@ sampsSP <- function(samps) {
 allsampsSP <- lapply(study_samps, sampsSP)
 
 
-#TODO use if else statements to prevent repetition? or other ggplot way
-
 sampsSPgraph             <- list(
   "blma2021sp" = ggplot(allsampsSP[[1]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
@@ -483,13 +481,13 @@ lulc_accs <- function(sampsRF) {
 }
 aoi_acc_assessment <-  lapply(study_samps, lulc_accs)
 
+lulc_df            <- data.frame(id = 1:4, lulc = lulc_classes$class_BlmaAncb)
 
 lulc_acc <- function(accuracies) {
   acctidy            <- do.call(rbind, accuracies)
   acctidy            <- data.frame(acctidy)
   colnames(acctidy)  <- c('observed', 'predicted')
   confmat            <- table(acctidy)
-  lulc_df            <- data.frame(id = 1:4, lulc = lulc_classes$class_BlmaAncb)
   colnames(confmat)  <- lulc_df$class
   samples            <- sum(confmat)
   samples_true       <- diag(confmat)
@@ -512,13 +510,25 @@ LULC_finalaccs <- lapply(aoi_acc_assessment, lulc_acc)
 
 # crop by wider study areas
 
-LULC <- list("blma2021_LULC" = crop(aois_lulc[[1]], sa[[1]]),
-             "blma2015_LULC" = crop(aois_lulc[[2]], sa[[1]]),
-             "ancb2021_LULC" = crop(aois_lulc[[3]], sa[[2]]),
-             "ancb2015_LULC" = crop(aois_lulc[[4]], sa[[2]]),
-             "plma2021_LULC" = crop(aois_lulc[[5]], sa[[3]]),
-             "plma2015_LULC" = crop(aois_lulc[[6]], sa[[3]]))
-LULC
+sa_lulc <- function(lulc_ls) {
+  LULC <- list("blma2021_LULC" = crop(lulc_ls[[1]], sa[[1]]),
+             "blma2015_LULC" = crop(lulc_ls[[2]], sa[[1]]),
+             "ancb2021_LULC" = crop(lulc_ls[[3]], sa[[2]]),
+             "ancb2015_LULC" = crop(lulc_ls[[4]], sa[[2]]),
+             "plma2021_LULC" = crop(lulc_ls[[5]], sa[[3]]),
+             "plma2015_LULC" = crop(lulc_ls[[6]], sa[[3]]))
+  LULCnames <- paste0(names(LULC), ".tif")
+  names(LULC) <- LULCnames
+  for (i in 1:length(LULC)) {
+  writeRaster(LULC[[i]],
+                 file.path("~/results/output", names(LULC[i])),
+                 overwrite=TRUE,
+                 filetype="GTiff")
+  }
+  return(LULC)
+}
+aois_LULC <- sa_lulc(aois_lulc)
+aois_LULC
 
 # crop by concession area
 
@@ -527,13 +537,13 @@ LULC_allmines <- list()
 LULC_mines <-  function(cover, area_mines) {
   blma2021_twigg <- crop(cover[[1]], area_mines[[1]])
   blma2015_twigg <- crop(cover[[2]], area_mines[[1]])
-  ancb2021_gk <- crop(cover[[3]], area_mines[[2]])
-  ancb2015_gk <- crop(cover[[4]], area_mines[[2]])
+  ancb2021_gk    <- crop(cover[[3]], area_mines[[2]])
+  ancb2015_gk    <- crop(cover[[4]], area_mines[[2]])
   plma2021_total <- crop(cover[[5]], area_mines[[3]])
   plma2021_total <- mask(plma2021_total, area_mines[[3]])
   plma2015_total <- crop(cover[[6]], area_mines[[3]])
   plma2015_total <- mask(plma2015_total, area_mines[[3]])
-  LULC_allmines <- list("blma2021_twigg" = blma2021_twigg,
+  LULC_allmines  <- list("blma2021_twigg" = blma2021_twigg,
                         "blma2015_twigg" = blma2015_twigg,
                         "ancb2021_gk" = ancb2021_gk,
                         "ancb2015_gk" = ancb2015_gk,
@@ -544,27 +554,45 @@ LULC_mines <-  function(cover, area_mines) {
 
 lulc_mines <- LULC_mines(aois_lulc, mines)
 
-LULC_freqs <- function(cover) {
-  for (i in 1:length(cover)) {
-  lulc_freq <- freq(cover[[i]])*0.0009
-  return(lulc_freq)
-}
-}
-LULC_freqSA <- LULC_freqs(LULC)
+# count frequency of each land use land cover
 
-LULC_freqsMns <- function(cover_mines) {
-  for (i in 1:length(cover_mines)) {
-  lulc_freqMns <- freq(cover_mines[[i]])*0.0009
-  return(lulc_freqMns)
+for (i in 1:length(LULC)) {
+  lulc_freq <- freq(LULC[[i]])*0.0009
+  print(lulc_freq)
 }
-}
-LULC_freqMines <- LULC_freqsMns(lulc_mines)
-LULC_freqMines ##??
 
-# plot in arcgis pro
+# count frequency of each land use land cover
+
+for (i in 1:length(lulc_mines)) {
+  lulc_freqMines <- freq(lulc_mines[[i]])*0.0009
+  print(lulc_freqMines)
+}
+
+ 
+
+
+```
+
+## change detection 
+
+```{r}
+# plots
+
+LULCdf_ls <- list()
+
+LULC_df <- function(area_lulc) {
+  for (i in 1:length(area_lulc)) {
+    LULCdf <- area_lulc
+    levels(LULCdf[[i]]) <- lulc_df
+    LULCdf_ls[[i]] <- as.data.frame(LULCdf[[i]], xy = TRUE)
+    names(LULCdf_ls) <- names(LULCdf)
+    return(LULCdf_ls)
+}
+}
+SA_LULCdf <- LULC_df(aois_LULC)
 
 ggplot() +
-  geom_tile(data = blma2021_classfddf_nna, aes(x = x, y = y, fill = class_value)) +
+  geom_tile(data = SA_LULCdf$blma2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
   geom_sf(data = mines$twigg, colour = "black", fill = NA, size = 1) +
   geom_sf(data = pacs$twigg_pacs, fill = NA) +
   geom_sf_text(data = pacs$twigg_pacs, aes(label = NomeN1)) +
@@ -577,11 +605,74 @@ ggplot() +
                     labels = lulc_classes$class_BlmaAncb) +
   coord_sf(datum = st_crs(mines$twigg))
 
-```
+ggplot() +
+  geom_tile(data = SA_LULCdf$blma2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = mines$twigg, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = pacs$twigg_pacs, fill = NA) +
+  geom_sf_text(data = pacs$twigg_pacs, aes(label = NomeN1)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Balama 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb) +
+  coord_sf(datum = st_crs(mines$twigg))
 
-## change detection 
+ggplot() +
+  geom_tile(data = SA_LULCdf$ancb2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = mines$gk, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = pacs$gk_pacs, fill = NA) +
+  geom_sf_text(data = pacs$gk_pacs, aes(label = Community)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Ancuabe 2020 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb) +
+  coord_sf(datum = st_crs(mines$gk))
 
-```{r}
+ggplot() +
+  geom_tile(data = SA_LULCdf$ancb2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = mines$gk, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = pacs$gk_pacs, fill = NA) +
+  geom_sf_text(data = pacs$gk_pacs, aes(label = Community)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Ancuabe 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = lulc_cols$cols_BlmaAncb,
+                    labels = lulc_classes$class_BlmaAncb) +
+  coord_sf(datum = st_crs(mines$gk))
 
+ggplot() +
+  geom_tile(data = SA_LULCdf$plma2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = mines$total, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = pacs$total_pacs, fill = NA) +
+  geom_sf_text(data = pacs$total_pacs, aes(label = Settlement)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Palma 2020 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = lulc_cols$cols_Plma,
+                    labels = lulc_classes$class_Plma) +
+  coord_sf(datum = st_crs(mines$total))
+
+ggplot() +
+  geom_tile(data = SA_LULCdf$plma2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data = mines$total, colour = "black", fill = NA, size = 1) +
+  geom_sf(data = pacs$total_pacs, fill = NA) +
+  geom_sf_text(data = pacs$total_pacs, aes(label = Settlement)) +
+  labs(x = NULL, 
+       y = NULL, 
+       title = "Palma 2015 land use land cover") +
+  scale_fill_manual("LULC",
+                    na.translate = FALSE,
+                    values = lulc_cols$cols_Plma,
+                    labels = lulc_classes$class_Plma) +
+  coord_sf(datum = st_crs(mines$total))
 ```
 
