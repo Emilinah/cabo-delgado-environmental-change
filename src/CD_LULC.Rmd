@@ -1,11 +1,11 @@
 ---
 title: "Land use land cover change due to energy transition-induced 
-        resource extraction in Mozambique"
+        resource extraction in Cabo Delgado, Mozambique"
 author: "Emilinah Namaganda"
 date:   "2022-11-16"
 output: html_document
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -29,12 +29,24 @@ library(rgdal)
 library(terra)
 ```
 
-## Loading the shapefiles of the resource extracting projects and their 
-## surrounding areas
+## Loading the necessary data
 
-The study areas include the administrative posts in which the extractive 
-projects are located, the projects (Twigg, GK, Total), and the area including 
-the projects and the surrounding project affected communities (PACS).
+### Loading the boundaries of the projects and their surrounding areas
+
+The resource extracting projects (Twigg, GK and Total) are mainly hosted in 
+three administrative posts (Balama, Ancuabe and Palma). 
+
+Therefore, our areas of interest (aoi) include: the administrative posts, 
+the boundaries of the projects, and the areas surrounding the projects, that is, 
+including the project affected communities (PACs). Of these, our principal 
+study areas are the boundaries of the projects and their surroundings.
+
+We acquired the relevant shapefiles from various sources including:-
+- Administrative posts and location of communities: In Mozambique, Eduardo 
+  Mondlane University and the Ministry of Transport and Communication; 
+  specifically the Spatial Development Program (SDP). Similar shapefiles can be 
+  acquired from online open access sources such as GRID: https://data.grid3.org/
+- Boundaries of mines: https://portals.landfolio.com/mozambique/en/ 
 
 ```{r}
 knitr::opts_chunk$set(echo = FALSE)
@@ -70,20 +82,6 @@ sa_minesfn <- function(mines) {
 sa_mines <- sa_minesfn("~/data/raw/mines/mines")
 
 
-study_areasfn <- function(mine_areas) {
-  studyAreas          <- list.files(mine_areas, 
-                            pattern = "\\.shp$", 
-                            full.names = TRUE)
-  studyAreasls        <- list(studyAreas[grep("blma", studyAreas)],
-                              studyAreas[grep("ancb", studyAreas)],
-                              studyAreas[grep("plma", studyAreas)])
-  studyAreasls        <- lapply(studyAreasls, vect)
-  names(studyAreasls) <- c("blma", "ancb", "plma")
-  return(studyAreasls)
-}
-study_areas <- study_areasfn("~/data/raw/mines/stdyareas")
-
-
 sa_pacsfn <- function(pacs) {
   PACs       <- list.files(pacs, 
                      pattern = "\\.shp$", 
@@ -99,14 +97,30 @@ sa_pacsfn <- function(pacs) {
               "gk_pacs"    = gk_pacs))
 }
 sa_pacs <- sa_pacsfn("~/data/raw/mines/pacs")
+
+
+study_areasfn <- function(mine_areas) {
+  studyAreas          <- list.files(mine_areas, 
+                            pattern = "\\.shp$", 
+                            full.names = TRUE)
+  studyAreasls        <- list(studyAreas[grep("blma", studyAreas)],
+                              studyAreas[grep("ancb", studyAreas)],
+                              studyAreas[grep("plma", studyAreas)])
+  studyAreasls        <- lapply(studyAreasls, vect)
+  names(studyAreasls) <- c("blma", "ancb", "plma")
+  return(studyAreasls)
+}
+study_areas <- study_areasfn("~/data/raw/mines/stdyareas")
 ```
 
-## loading the necessary images of the study areas
+### loading the satellite images of our areas of interest
 
-The images (consisting bands 1 to 7 and qa that is, cloud pixel bands) are from 
-the Landsat satellite specifically the years; 2021/2020 and 2015 covering the 
-three study areas of Balama (Twigg mine), Ancuabe (GK mine), and Palma 
-(Total project). 
+To study the change in land use and land cover (lulc) in our areas of interest, 
+between 2015 to 2021, we use and therefore load bands 1 to 7 of the Landsat 8 
+satellite. We also load the qa bands which indicate the pixels within the 
+images that are covered by clouds.
+
+All the images were downloaded from https://earthexplorer.usgs.gov/ 
 
 ```{r}
 sa_bands17fn <- function(folders_images) {
@@ -181,20 +195,20 @@ qa_bandsfinal <- lapply(qa_bands, qa_bandsCATfn)
 qa_bandsfinal
 ```
 
-## Preprocessing the images
+## Data preprocessing and analysis
 
-Cloud masks for all the images are created and used to mask the clouded regions 
-from the images. The clear images - without clouds - are projected into the 
-Northern Mozambique's coordinate reference system. The images are cropped to 
-the area of interest (aoi) - the administrative post(s) which host the 
-extractive projects. 
+### Preprocessing the images
 
-In cases where two images are necessary to 
-cover the administrative post(s), following cropping, the images are 
-mosaicked to create one image of the area.
+To prepare the images for analysis, we create and use a cloud mask to mask out 
+the clouded regions from the images. The cloud-free images are re-projected
+into the right geographic coordinates for northern Mozambique and cropped to 
+the levels of our administrative posts of interest.
+
+In cases where two images are necessary to cover the relevant administrative 
+post(s), the cropped images are mosaicked to create one image of each area for 
+each year of study.
 
 ```{r}
-
 moz_crs    <- "+init=EPSG:32737"
 
 images_processfn  <- function(qaBands, bands17, aoi_post) {
@@ -249,35 +263,52 @@ aois_imagesfinal <- aois_imagesfinal_fn(aois_images)
 aois_imagesfinal
 ```
 
-## Classifying the images
+### Create training samples for image classification
+
+To classify the images of our areas of interest, we created training samples 
+from RGB composites of the areas. To aid with distinguishing features, we also 
+used ndvi layers, Google Earth (https://earth.google.com/web/), and published 
+projects' environmental impact assessment reports:
+ - Twigg (http://www.cesnet.co.za/pubdocs/Syrah%20Balama%20Graphite%20Mine%20
+   Port%20CB290814/Parte%20II%20ESHIAR.pdf)
+ - Total (https://mzlng.totalenergies.co.mz/sites/g/files/wompnd2311/f/atoms/
+   files/mz-000-am1-hs-rpt-00002_eshia_executive_summary_and_update-05-19-2020.
+   pdf).
+
+We created approximately 500 pixels per image. This process was conducted in 
+ArcGIS Pro Version 2.8.3, but it can also be done in open access QGIS 
+(https://www.qgis.org/en/site/).
+
+Where possible, training samples can (and for increased accuracy should be) 
+generated from groundtruth data. However, given the wide extent of the study 
+areas, and the inaccessibility of some of these areas due to an armed conflict, 
+creation of training samples from the images was most feasible. The generation 
+of training samples from imagery as a surrogate for ground observation has been 
+utilized in other cases (Foody, 2002).
 
 ```{r}
-# composites and indices exported to arcgis to create training samples. 
-# couldn't find how to do that in R. Perhaps additional benefit of GEE is that
-# it is more self-contained?
-
 comp   <- function(bands17, x, y, z) {
   comps    <- c(bands17[[x]], bands17[[y]], bands17[[z]])
   return(comps)
 }
 
 aois_RGB <- function(bands17) {
-  aois_comp <- list("blma2021_b543" = comp(bands17[[1]], 5, 4, 3),
-                   "blma2015_b543" = comp(bands17[[2]], 5, 4, 3),
-                   "blma2021_b654" = comp(bands17[[1]], 6, 5, 4),
-                   "blma2015_b654" = comp(bands17[[2]], 6, 5, 4),
-                   "ancbe2020_b543" = comp(bands17[[3]], 5, 4, 3),
-                   "ancbe2015_b543" = comp(bands17[[4]], 5, 4, 3),
-                   "ancbe2020_b654" = comp(bands17[[3]], 6, 5, 4),
-                   "ancbe2015_b654" = comp(bands17[[4]], 6, 5, 4),
-                   "plma2020_b543" = comp(bands17[[5]], 5, 4, 3),
-                   "plma2015_b543" = comp(bands17[[6]], 5, 4, 3),
-                   "plma2020_b654" = comp(bands17[[5]], 6, 5, 4),
-                   "plma2015_b654" = comp(bands17[[6]], 6, 5, 4))
-  aois_compnames <- paste0(names(aois_comp), ".tif")
+  aois_comp        <- list("blma2021_b543"  = comp(bands17[[1]], 5, 4, 3),
+                           "blma2015_b543"  = comp(bands17[[2]], 5, 4, 3),
+                           "blma2021_b654"  = comp(bands17[[1]], 6, 5, 4),
+                           "blma2015_b654"  = comp(bands17[[2]], 6, 5, 4),
+                           "ancbe2020_b543" = comp(bands17[[3]], 5, 4, 3),
+                           "ancbe2015_b543" = comp(bands17[[4]], 5, 4, 3),
+                           "ancbe2020_b654" = comp(bands17[[3]], 6, 5, 4),
+                           "ancbe2015_b654" = comp(bands17[[4]], 6, 5, 4),
+                           "plma2020_b543"  = comp(bands17[[5]], 5, 4, 3),
+                           "plma2015_b543"  = comp(bands17[[6]], 5, 4, 3),
+                           "plma2020_b654"  = comp(bands17[[5]], 6, 5, 4),
+                           "plma2015_b654"  = comp(bands17[[6]], 6, 5, 4))
+  aois_compnames   <- paste0(names(aois_comp), ".tif")
   names(aois_comp) <- aois_compnames
   for (i in 1:length(aois_comp)) {
-  aoisComp <- writeRaster(aois_comp[[i]],
+  aoisComp         <- writeRaster(aois_comp[[i]],
                  file.path("~/results/output", 
                            names(aois_comp[i])),
                  overwrite=TRUE,
@@ -285,34 +316,25 @@ aois_RGB <- function(bands17) {
   }
   return(aois_comp)
 }
-aois_compst <- aois_RGB(aois_final)
-aois_compst
-
-comp_4bs   <- function(bands17, w, x, y, z) {
-  comps    <- c(bands17[[w]], bands17[[x]], bands17[[y]], bands17[[z]])
-  return(comps)
-}
-
-aois_4bs <- lapply(aois_final, w = 3, x = 4, y = 5, z = 6, comp_4bs)
-aois_4bs
+aois_compst <- aois_RGB(aois_imagesfinal)
 
 
 indices <- function(bands17, x, y) {
-  bandx <- bands17[[x]]
-  bandy <- bands17[[y]]
+  bandx   <- bands17[[x]]
+  bandy   <- bands17[[y]]
   indices <- (bandx - bandy)/(bandx + bandy)
   return(indices)
 }
 
 ndvi_fun <- function(bands17) {
-  ndvi <- list("blma2021_ndvi" = indices(bands17[[1]], 5, 4),
-     "blma2015_ndvi" = indices(bands17[[2]], 5, 4),
-     "ancb2020_ndvi" = indices(bands17[[3]], 5, 4),
-     "ancb2015_ndvi" = indices(bands17[[4]], 5, 4),
-     "plma2020_ndvi" = indices(bands17[[5]], 5, 4),
-     "plma2015_ndvi" = indices(bands17[[6]], 5, 4))
-  ndvinames <- paste0(names(ndvi), ".tif")
-  names(ndvi) <- ndvinames
+  ndvi         <- list("blma2021_ndvi" = indices(bands17[[1]], 5, 4),
+                       "blma2015_ndvi" = indices(bands17[[2]], 5, 4),
+                       "ancb2020_ndvi" = indices(bands17[[3]], 5, 4),
+                       "ancb2015_ndvi" = indices(bands17[[4]], 5, 4),
+                       "plma2020_ndvi" = indices(bands17[[5]], 5, 4),
+                       "plma2015_ndvi" = indices(bands17[[6]], 5, 4))
+  ndvinames    <- paste0(names(ndvi), ".tif")
+  names(ndvi)  <- ndvinames
   for (i in 1:length(ndvi)) {
   writeRaster(ndvi[[i]],
                  file.path("~/results/output", names(ndvi[i])),
@@ -321,29 +343,23 @@ ndvi_fun <- function(bands17) {
   }
   return(ndvi)
 }
-aois_ndvi <- ndvi_fun(aois_final)
+aois_ndvi <- ndvi_fun(aois_imagesfinal)
 
-
-## model training
-# Water removed as a class from the Palma training sample. 
-# It was too small to meet the accuracy needs of the classification. 
-# It is now classified as wetland
-
-trains <- list(
-  "blma2021_train" = vect("~/data/temp/training-samples/blma2021_train500V3.shp"),
-  "blma2015_train" = vect("~/data/temp/training-samples/blma2015_train500V2.shp"),
+train_polys <- list(
+  "blma2021_train" = vect("~/data/temp/training-samples/blma2021_train500.shp"),
+  "blma2015_train" = vect("~/data/temp/training-samples/blma2015_train500.shp"),
   "ancb2020_train" = vect("~/data/temp/training-samples/ancb2020_train500.shp"),
   "ancb2015_train" = vect("~/data/temp/training-samples/ancb2015_train500.shp"),
-  "plma2020_train" = vect("~/data/temp/training-samples/plma2020_train500Weq_4cls.shp"),
-  "plma2015_train" = vect("~/data/temp/training-samples/plma2015_train500_4clsv2.shp"))
+  "plma2020_train" = vect("~/data/temp/training-samples/plma2020_train500.shp"),
+  "plma2015_train" = vect("~/data/temp/training-samples/plma2015_train500.shp"))
+```
 
+From the training sample polygons, we select sample points for use in the 
+lulc classification process. The spectral profiles of the samples can be 
+inspected to ensure adequate differentiation among the lulc classes. We follow 
+the workflow suggested by Ghosh & Hijmans (2021).
 
-# create training sample points from training sites data
-# create training model  
-# spatSample: In order to assure regularity when requesting a regular sample, 
-# the number of cells or points returned may not be exactly the same as the 
-# size requested (documentation Terra).
-
+```{r}
 samps <- function(train, image_aoi) {
                 set.seed(555)
   Tsamps     <- spatSample(train, 1000, method = "regular")
@@ -356,39 +372,22 @@ samps <- function(train, image_aoi) {
   return(sampsGeoSF)
 }
 
-study_samps <- mapply(trains, aois_final, FUN = samps, SIMPLIFY = F)
-names(study_samps) <- c("blma2021_samps",
-                        "blma2015_samps",
-                        "ancb2020_samps",
-                        "ancb2015_samps",
-                        "plma2020_samps",
-                        "plma2015_samps")
+sa_samps        <- mapply(train_polys, 
+                          aois_imagesfinal, 
+                          FUN = samps, 
+                          SIMPLIFY = F)
+names(sa_samps) <- c("blma2021_samps",
+                     "blma2015_samps",
+                     "ancb2020_samps",
+                     "ancb2015_samps",
+                     "plma2020_samps",
+                     "plma2015_samps")
 
-
-# inspect the spectral profiles of the training samples
-
-lulc_classes <- list(class_BlmaAncb = c("built & bare",
-                                        "dense vegetation",
-                                        "sparse vegetation",
-                                        "water"),
-                     class_Plma = c("built & bare",
-                                    "dense vegetation",
-                                    "sparse vegetation",
-                                    "wetland",
-                                    "water"))
-
-lulc_cols <- list(cols_BlmaAncb = c('darkorange', 
-                                    'darkgreen', 
-                                    'green', 
-                                    'deepskyblue'),
-                  cols_Plma = c('darkorange', 
-                                'darkgreen', 
-                                'green', 
-                                'lightcyan', 
-                                'deepskyblue'))
 
 sampsSP <- function(samps) {
-  sampsSP             <- aggregate(st_drop_geometry(samps)[, -1], list(samps$class), mean)
+  sampsSP             <- aggregate(st_drop_geometry(samps)[, -1], 
+                                   list(samps$class), 
+                                   mean)
   rownames(sampsSP)   <- sampsSP[, 1]
   sampsSP             <- sampsSP[, -1]
   names(sampsSP)[1:4] <- 1:4
@@ -396,13 +395,31 @@ sampsSP <- function(samps) {
   sampsSP             <- as.data.frame(sampsSP)
   sampsSP             <- cbind(bands = rownames(sampsSP), sampsSP)
   rownames(sampsSP)   <- NULL
-  sampsSP             <- melt(sampsSP, id.vars = "bands", variable.name = "lulc")
+  sampsSP             <- melt(sampsSP, 
+                              id.vars = "bands", 
+                              variable.name = "lulc")
   sampsSP$bands       <- as.numeric(sampsSP$bands)
   return(sampsSP)
 }
+allsampsSP <- lapply(sa_samps, sampsSP)
 
-allsampsSP <- lapply(study_samps, sampsSP)
+lulc_class <- list(BlmaAncb = c("built & bare",
+                                "dense vegetation",
+                                "sparse vegetation",
+                                "water"),
+                     Plma   = c("built & bare",
+                                "dense vegetation",
+                                "sparse vegetation",
+                                "wetland"))
 
+lulc_cols <- list(BlmaAncb = c('darkorange', 
+                               'darkgreen', 
+                               'green', 
+                               'deepskyblue'),
+                  Plma     = c('darkorange', 
+                                'darkgreen', 
+                                'green', 
+                                'lightcyan'))
 
 sampsSPgraph             <- list(
   "blma2021sp" = ggplot(allsampsSP[[1]], aes(bands, value)) +
@@ -410,48 +427,57 @@ sampsSPgraph             <- list(
     ggtitle("Spectral Profile Balama 2021") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb),
+                    values = lulc_cols$BlmaAncb,
+                    labels = lulc_class$BlmaAncb),
   "blma2015sp" = ggplot(allsampsSP[[2]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
     ggtitle("Spectral Profile Balama 2015") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb),
+                    values = lulc_cols$BlmaAncb,
+                    labels = lulc_class$BlmaAncb),
   "ancb2020sp" = ggplot(allsampsSP[[3]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
     ggtitle("Spectral Profile Ancuabe 2020") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb),
+                    values = lulc_cols$BlmaAncb,
+                    labels = lulc_class$BlmaAncb),
   "ancb2015sp" = ggplot(allsampsSP[[4]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
     ggtitle("Spectral Profile Ancuabe 2015") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb),
+                    values = lulc_cols$BlmaAncb,
+                    labels = lulc_class$BlmaAncb),
   "plma2020sp" = ggplot(allsampsSP[[5]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
     ggtitle("Spectral Profile Palma 2020") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_Plma,
-                    labels = lulc_classes$class_Plma),
+                    values = lulc_cols$Plma,
+                    labels = lulc_class$Plma),
   "plma2015sp" = ggplot(allsampsSP[[6]], aes(bands, value)) +
     geom_line(aes(color = lulc), size = 1) +
     ggtitle("Spectral Profile Palma 2015") +
     labs(x = "Bands", y = "Reflectance") +
     scale_colour_manual("LULC", 
-                    values = lulc_cols$cols_Plma,
-                    labels = lulc_classes$class_Plma)) 
+                    values = lulc_cols$Plma,
+                    labels = lulc_class$Plma))
+```
 
+## Image classification 
 
-# classify images with randomforest model
+We classify each image using the random forest model and crop the output by the
+three study areas and by the boundaries of the three projects. 
 
-# random forest
+```{r}
+comp_4bs   <- function(bands17, w, x, y, z) {
+  comps    <- c(bands17[[w]], bands17[[x]], bands17[[y]], bands17[[z]])
+  return(comps)
+}
+aois_4bs <- lapply(aois_imagesfinal, w = 3, x = 4, y = 5, z = 6, comp_4bs)
+
 
 lulc <- function(samps, aoi) {
                 set.seed(555)
@@ -462,65 +488,17 @@ lulc <- function(samps, aoi) {
   classified <- predict(aoi, model, na.rm = TRUE)
   return(classified)
 }
-aois_lulc <- mapply(lulc, study_samps, aois_4bs)
-
-# accuracies
-# refer to hijmans in document as method followed. Cite.
-accuracies <- list() ## up, check that you put the empty list outside function
-
-lulc_accs <- function(sampsRF) {
-  for (k in 1:5) {
-                  set.seed(555)
-    sampsRF    <- st_drop_geometry(sampsRF)
-    sampGrps   <- kfold(sampsRF, k = 5, by = sampsRF$class)
-                  print(table(sampGrps))
-    train      <- sampsRF[sampGrps!= k, ]
-    test       <- sampsRF[sampGrps == k, ]
-    model      <- randomForest(as.factor(class)~., data=train, method = 'class', minsplit = 5)
-    classfd    <- predict(model, test, na.rm = TRUE)
-    accuracies[[k]] <- cbind(test$class, as.integer(classfd))
-  }
-  return(accuracies)
-}
-aoi_acc_assessment <-  lapply(study_samps, lulc_accs)
-
-lulc_df            <- data.frame(id = 1:4, lulc = lulc_classes$class_BlmaAncb)
-
-lulc_acc <- function(accuracies) {
-  acctidy            <- do.call(rbind, accuracies)
-  acctidy            <- data.frame(acctidy)
-  colnames(acctidy)  <- c('observed', 'predicted')
-  confmat            <- table(acctidy)
-  colnames(confmat)  <- lulc_df$class
-  samples            <- sum(confmat)
-  samples_true       <- diag(confmat)
-  overallAcc         <- sum(samples_true)/samples
-  obsCases           <- apply(confmat, 1, sum)
-  obsCases_true      <- obsCases/samples
-  predCases          <- apply(confmat, 2, sum)
-  predCases_true     <- predCases/samples
-  expAcc             <- sum(obsCases_true*predCases_true)
-  kappa              <- (overallAcc - expAcc)/(1 - expAcc)
-  ProdAcc            <- samples_true/predCases
-  UserAcc            <- samples_true/obsCases
-  outAcc             <- data.frame(ProdAcc, UserAcc)
-  lulc_acc           <- list(confmat, overallAcc, kappa, outAcc)
-  return(lulc_acc)
-}
-
-LULC_finalaccs <- lapply(aoi_acc_assessment, lulc_acc)
+aois_lulc <- mapply(lulc, sa_samps, aois_4bs)
 
 
-# crop by wider study areas
-
-sa_lulc <- function(lulc_ls) {
-  LULC <- list("blma2021_LULC" = crop(lulc_ls[[1]], sa[[1]]),
-             "blma2015_LULC" = crop(lulc_ls[[2]], sa[[1]]),
-             "ancb2021_LULC" = crop(lulc_ls[[3]], sa[[2]]),
-             "ancb2015_LULC" = crop(lulc_ls[[4]], sa[[2]]),
-             "plma2021_LULC" = crop(lulc_ls[[5]], sa[[3]]),
-             "plma2015_LULC" = crop(lulc_ls[[6]], sa[[3]]))
-  LULCnames <- paste0(names(LULC), ".tif")
+sa_lulcfn <- function(lulc_ls) {
+  LULC       <- list("blma2021_LULC" = crop(lulc_ls[[1]], study_areas[[1]]),
+                     "blma2015_LULC" = crop(lulc_ls[[2]], study_areas[[1]]),
+                     "ancb2021_LULC" = crop(lulc_ls[[3]], study_areas[[2]]),
+                     "ancb2015_LULC" = crop(lulc_ls[[4]], study_areas[[2]]),
+                     "plma2020_LULC" = crop(lulc_ls[[5]], study_areas[[3]]),
+                     "plma2015_LULC" = crop(lulc_ls[[6]], study_areas[[3]]))
+  LULCnames   <- paste0(names(LULC), ".tif")
   names(LULC) <- LULCnames
   for (i in 1:length(LULC)) {
   writeRaster(LULC[[i]],
@@ -530,69 +508,49 @@ sa_lulc <- function(lulc_ls) {
   }
   return(LULC)
 }
-aois_LULC <- sa_lulc(aois_lulc)
-aois_LULC
+sa_LULC <- sa_lulcfn(aois_lulc)
 
-# crop by concession area
 
-LULC_allmines <- list()
+lulcMines <- list()
 
-LULC_mines <-  function(cover, area_mines) {
-  blma2021_twigg <- crop(cover[[1]], area_mines[[1]])
-  blma2015_twigg <- crop(cover[[2]], area_mines[[1]])
-  ancb2021_gk    <- crop(cover[[3]], area_mines[[2]])
-  ancb2015_gk    <- crop(cover[[4]], area_mines[[2]])
-  plma2021_total <- crop(cover[[5]], area_mines[[3]])
-  plma2021_total <- mask(plma2021_total, area_mines[[3]])
-  plma2015_total <- crop(cover[[6]], area_mines[[3]])
-  plma2015_total <- mask(plma2015_total, area_mines[[3]])
-  LULC_allmines  <- list("blma2021_twigg" = blma2021_twigg,
-                        "blma2015_twigg" = blma2015_twigg,
-                        "ancb2021_gk" = ancb2021_gk,
-                        "ancb2015_gk" = ancb2015_gk,
-                        "plma2021_total" = plma2021_total,
-                        "plma2015_total" = plma2015_total)
-  return(LULC_allmines)
+lulc_minesfn <-  function(aoiLULC, mine_area) {
+  blma2021_twigg  <- crop(aoiLULC[[1]], mine_area[[1]])
+  blma2015_twigg  <- crop(aoiLULC[[2]], mine_area[[1]])
+  ancb2021_gk     <- crop(aoiLULC[[3]], mine_area[[2]])
+  ancb2015_gk     <- crop(aoiLULC[[4]], mine_area[[2]])
+  plma2021_total  <- crop(aoiLULC[[5]], mine_area[[3]])
+  plma2021_total  <- mask(plma2021_total, mine_area[[3]])
+  plma2015_total  <- crop(aoiLULC[[6]], mine_area[[3]])
+  plma2015_total  <- mask(plma2015_total, mine_area[[3]])
+  lulcMines       <- list("blma2021_twigg" = blma2021_twigg,
+                         "blma2015_twigg"  = blma2015_twigg,
+                         "ancb2021_gk"     = ancb2021_gk,
+                         "ancb2015_gk"     = ancb2015_gk,
+                         "plma2020_total"  = plma2021_total,
+                         "plma2015_total"  = plma2015_total)
+  return(lulcMines)
 }
-
-lulc_mines <- LULC_mines(aois_lulc, mines)
-
-# count frequency of each land use land cover
-
-for (i in 1:length(LULC)) {
-  lulc_freq <- freq(LULC[[i]])*0.0009
-  print(lulc_freq)
-}
-
-# count frequency of each land use land cover
-
-for (i in 1:length(lulc_mines)) {
-  lulc_freqMines <- freq(lulc_mines[[i]])*0.0009
-  print(lulc_freqMines)
-}
-
- 
-
-
+lulc_mines <- lulc_minesfn(aois_lulc, sa_mines)
 ```
 
-## change detection 
+#### Plots of study area land use land cover 
 
 ```{r}
-# plots
+lulcdf_blmaAncb <- data.frame(id = 1:4, lulc = lulc_class$BlmaAncb)
+lulcdf_plma     <- data.frame(id = 1:4, lulc = lulc_class$Plma)
 
 LULCdf_ls <- list()
 
-LULC_df <- function(area_lulc) {
-  for (i in 1:length(area_lulc)) {
-    LULCdf <- area_lulc
+LULCdf_fn <- function(stdyarea_lulc) {
+  for (i in 1:length(stdyarea_lulc)) {
+    LULCdf              <- stdyarea_lulc
     levels(LULCdf[[i]]) <- lulc_df
-    LULCdf_ls[[i]] <- as.data.frame(LULCdf[[i]], xy = TRUE)
-    names(LULCdf_ls) <- names(LULCdf)
+    LULCdf_ls[[i]]      <- as.data.frame(LULCdf[[i]], xy = TRUE)
+    names(LULCdf_ls)    <- names(LULCdf)
     return(LULCdf_ls)
 }
 }
-SA_LULCdf <- LULC_df(aois_LULC)
+sa_LULCdf <- LULCdf_fn(sa_LULC)
 
 ggplot() +
   geom_tile(data = SA_LULCdf$blma2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
@@ -678,4 +636,83 @@ ggplot() +
                     labels = lulc_classes$class_Plma) +
   coord_sf(datum = st_crs(mines$total))
 ```
+
+## Change detection
+
+The cropped outputs include a 'count' column which includes area in pixels 
+taken up by each lulc class. We multiply these areas by 0.0009 to convert it to 
+square kilometers. We use the changes in these lulc areas for each location 
+over the two time stamps (2021/2020 & 2015) to determine the change in lulc due 
+to energy transition-induced resource extraction in Cabo Delgado, Mozambique.
+
+
+```{r}
+for (i in 1:length(sa_LULC)) {
+  lulc_freq <- freq(sa_LULC[[i]])*0.0009
+  print(lulc_freq)
+}
+
+for (i in 1:length(lulc_mines)) {
+  lulc_freqMines <- freq(lulc_mines[[i]])*0.0009
+  print(lulc_freqMines)
+}
+```
+
+
+### Accuracy assessment
+
+```{r}
+accuracies <- list()
+
+lulc_accs <- function(sampsRF) {
+  for (k in 1:5) {
+                  set.seed(555)
+    sampsRF    <- st_drop_geometry(sampsRF)
+    sampGrps   <- kfold(sampsRF, k = 5, by = sampsRF$class)
+                  print(table(sampGrps))
+    train      <- sampsRF[sampGrps!= k, ]
+    test       <- sampsRF[sampGrps == k, ]
+    model      <- randomForest(as.factor(class)~., data=train, method = 'class', minsplit = 5)
+    classfd    <- predict(model, test, na.rm = TRUE)
+    accuracies[[k]] <- cbind(test$class, as.integer(classfd))
+  }
+  return(accuracies)
+}
+aoi_acc_assessment <-  lapply(study_samps, lulc_accs)
+
+lulc_df            <- data.frame(id = 1:4, lulc = lulc_classes$class_BlmaAncb)
+
+lulc_acc <- function(accuracies) {
+  acctidy            <- do.call(rbind, accuracies)
+  acctidy            <- data.frame(acctidy)
+  colnames(acctidy)  <- c('observed', 'predicted')
+  confmat            <- table(acctidy)
+  colnames(confmat)  <- lulc_df$class #TODO specify class per location
+  samples            <- sum(confmat)
+  samples_true       <- diag(confmat)
+  overallAcc         <- sum(samples_true)/samples
+  obsCases           <- apply(confmat, 1, sum)
+  obsCases_true      <- obsCases/samples
+  predCases          <- apply(confmat, 2, sum)
+  predCases_true     <- predCases/samples
+  expAcc             <- sum(obsCases_true*predCases_true)
+  kappa              <- (overallAcc - expAcc)/(1 - expAcc)
+  ProdAcc            <- samples_true/predCases
+  UserAcc            <- samples_true/obsCases
+  outAcc             <- data.frame(ProdAcc, UserAcc)
+  lulc_acc           <- list(confmat, overallAcc, kappa, outAcc)
+  return(lulc_acc)
+}
+
+LULC_finalaccs <- lapply(aoi_acc_assessment, lulc_acc)
+
+```
+
+## References
+
+Foody, G. M. (2002). Status of land cover classification accuracy assessment. 
+Remote sensing of environment, 80(1), 185-201.
+
+Ghosh, A., & Hijmans, R. J. (2021). Remote sensing image analysis with R. 
+Rspatial.org.
 
