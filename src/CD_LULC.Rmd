@@ -1,17 +1,16 @@
 ---
-title: "Land use land cover change due to green extractivism in Mozambique"
+title: "Land use land cover change due to energy transition-induced 
+        resource extraction in Mozambique"
 author: "Emilinah Namaganda"
-date: "2022-11-01"
+date:   "2022-11-16"
 output: html_document
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent
-printing of the R code that generated the plot.
 
 ## Loading the necessary libraries
 
@@ -30,117 +29,63 @@ library(rgdal)
 library(terra)
 ```
 
-```{r}
-# regularly remove temporary files
+## Loading the shapefiles of the resource extracting projects and their 
+## surrounding areas
 
-tmpFiles(current=TRUE, orphan=TRUE, old=TRUE, remove=F)
-# I often get the following error on start up unless i clear my global
-# environment from the previous session. "Error in 
-#.External(list(name = "CppMethod__invoke_notvoid", address = <pointer: (nil)>,  
-#:  NULL value passed as symbol address"
-
-```
-
-
-## Preprocessing Twigg (Balama), GK (Ancuabe) and Total (Palma) images
+The study areas include the administrative posts in which the extractive 
+projects are located, the projects (Twigg, GK, Total), and the area including 
+the projects and the surrounding project affected communities (PACS).
 
 ```{r}
-# loading relevant image bands -----------
-# TODO reorganise to start with ancb (not ancbe) and end with Plma
-# TODO change ancuabe abbreviation from ancbe to ancb
-# TODO start with the study areas and then input the bands close to the qa bands
+knitr::opts_chunk$set(echo = FALSE)
 
-studyareas_bands17 <- function(folders_images) {
-  bands_all      <- list.files(folders_images,
-                               recursive = T,
-                               pattern = glob2rx("*B*"), 
-                               full.names = TRUE)
-  bands_17       <- bands_all[grep("B10", bands_all, invert = TRUE)]
-  bands_list     <- list(bands_17[grep("2021.*165069", bands_17)],
-                         bands_17[grep("2015.*165069", bands_17)],
-                         bands_17[grep("2020.*165067", bands_17)],
-                         bands_17[grep("2020.*164068", bands_17)],
-                         bands_17[grep("2015.*165067", bands_17)],
-                         bands_17[grep("2015.*164068", bands_17)],
-                         bands_17[grep("2020.*165069", bands_17)],
-                         bands_17[grep("2020.*164069", bands_17)],
-                         bands_17[grep("2015.*165069", bands_17)],
-                         bands_17[grep("2015.*164069", bands_17)])
-  names(bands_list) <- (c("blma2021_b17",
-                         "blma2015_b17",
-                         "plma2020A_b17",
-                         "plma2020B_b17",
-                         "plma2015A_b17",
-                         "plma2015B_b17",
-                         "ancb2020A_b17",
-                         "ancb2020B_b17",
-                         "ancb2015A_b17",
-                         "ancb2015B_b17"))
-  bands          <- lapply(bands_list, rast)
-  return(bands)
-}
-sa_bands <- studyareas_bands17("~/data/raw/images")
-sa_bands
-
-
-# removing cloud cover pixels, re-projecting to correct 
-# coordinate reference system (CRS), cropping to area of interest
-
-moz_crs    <- "+init=EPSG:32737"
-
-# administrative posts where the mines and surrounding PACs are found
-
-study_areasPosts <- function(mine_areas) {
-  study_Posts <- list.files(mine_areas, 
+sa_postsfn <- function(posts) {
+  saposts           <- list.files(posts, 
                             pattern = "\\.shp$", 
                             full.names = TRUE)
-  study_Postsls <- list(study_Posts[grep("blma", study_Posts)],
-                        study_Posts[grep("ancb", study_Posts)],
-                        study_Posts[grep("plma", study_Posts)])
-  study_Postsls <- lapply(study_Postsls, vect)
-  names(study_Postsls) <- c("blmapost", "ancbpost", "plmapost")
-  return(study_Postsls)
+  saposts_ls        <- list(saposts[grep("blma", saposts)],
+                        saposts[grep("ancb", saposts)],
+                        saposts[grep("plma", saposts)])
+  saposts_ls        <- lapply(saposts_ls, vect)
+  names(saposts_ls) <- c("blmapost", "ancbpost", "plmapost")
+  return(saposts_ls)
 }
-sa_posts <- study_areasPosts("~/data/raw/mines/admposts")
-sa_posts
-
-# rectangles including mines and surrounding PACs
-study_areas <- function(mine_areas) {
-  study_areas <- list.files(mine_areas, 
-                            pattern = "\\.shp$", 
-                            full.names = TRUE)
-  study_areasls <- list(study_areas[grep("blma", study_areas)],
-                        study_areas[grep("ancb", study_areas)],
-                        study_areas[grep("plma", study_areas)])
-  study_areasls <- lapply(study_areasls, vect)
-  names(study_areasls) <- c("blma", "ancb", "plma")
-  return(study_areasls)
-}
-sa <- study_areas("~/data/raw/mines/stdyareas")
-
-# totalAoi    <- crop(plma, total_bufSV) # created an extra AOI to 
-# eliminate the ocean from analysis #TODO
+sa_posts <- sa_postsfn("~/data/raw/mines/admposts")
 
 
-study_mines <- function(mine_areas) {
-  mines <- list.files(mine_areas, 
+sa_minesfn <- function(mines) {
+  samines <- list.files(mines, 
                       pattern = "\\.shp$", 
                       full.names = TRUE)
-  twigg <- st_read(mines[3], 
+  twigg   <- st_read(samines[3], 
                    query = "SELECT Mine FROM \"twigg\" WHERE FID = 0")
-  gk    <- st_read(mines[1], 
+  gk      <- st_read(samines[1], 
                    query = "SELECT Mine FROM \"gk\" WHERE FID = 0")
-  total <- st_read(mines[2], 
+  total   <- st_read(samines[2], 
                    query = "SELECT Name FROM \"total\" WHERE FID = 0")
   return(list("twigg" = twigg,
-              "gk" = gk,
+              "gk"    = gk,
               "total" = total))
 }
-mines <- study_mines("~/data/raw/mines/mines")
+sa_mines <- sa_minesfn("~/data/raw/mines/mines")
 
 
-study_pacs <- function(mine_areas) {
-  PACs       <- list.files(mine_areas, 
+study_areasfn <- function(mine_areas) {
+  studyAreas          <- list.files(mine_areas, 
+                            pattern = "\\.shp$", 
+                            full.names = TRUE)
+  studyAreasls        <- list(studyAreas[grep("blma", studyAreas)],
+                              studyAreas[grep("ancb", studyAreas)],
+                              studyAreas[grep("plma", studyAreas)])
+  studyAreasls        <- lapply(studyAreasls, vect)
+  names(studyAreasls) <- c("blma", "ancb", "plma")
+  return(studyAreasls)
+}
+study_areas <- study_areasfn("~/data/raw/mines/stdyareas")
+
+
+sa_pacsfn <- function(pacs) {
+  PACs       <- list.files(pacs, 
                      pattern = "\\.shp$", 
                      full.names = TRUE)
   twigg_pacs <- st_read(PACs[3], 
@@ -151,99 +96,157 @@ study_pacs <- function(mine_areas) {
                      query = "SELECT Community FROM \"gkPACS\"")
   return(list("twigg_pacs" = twigg_pacs, 
               "total_pacs" = total_pacs, 
-              "gk_pacs" = gk_pacs))
+              "gk_pacs"    = gk_pacs))
 }
-pacs <- study_pacs("~/data/raw/mines/pacs")
+sa_pacs <- sa_pacsfn("~/data/raw/mines/pacs")
+```
+
+## loading the necessary images of the study areas
+
+The images (consisting bands 1 to 7 and qa that is, cloud pixel bands) are from 
+the Landsat satellite specifically the years; 2021/2020 and 2015 covering the 
+three study areas of Balama (Twigg mine), Ancuabe (GK mine), and Palma 
+(Total project). 
+
+```{r}
+sa_bands17fn <- function(folders_images) {
+  bands_all        <- list.files(folders_images,
+                               recursive = T,
+                               pattern = glob2rx("*B*"), 
+                               full.names = TRUE)
+  bands_17         <- bands_all[grep("B10", bands_all, invert = TRUE)]
+  bands_17ls       <- list(bands_17[grep("2021.*165069", bands_17)],
+                         bands_17[grep("2015.*165069", bands_17)],
+                         bands_17[grep("2020.*165067", bands_17)],
+                         bands_17[grep("2020.*164068", bands_17)],
+                         bands_17[grep("2015.*165067", bands_17)],
+                         bands_17[grep("2015.*164068", bands_17)],
+                         bands_17[grep("2020.*165069", bands_17)],
+                         bands_17[grep("2020.*164069", bands_17)],
+                         bands_17[grep("2015.*165069", bands_17)],
+                         bands_17[grep("2015.*164069", bands_17)])
+  names(bands_17ls) <- (c("blma2021_b17",
+                         "blma2015_b17",
+                         "plma2020A_b17",
+                         "plma2020B_b17",
+                         "plma2015A_b17",
+                         "plma2015B_b17",
+                         "ancb2020A_b17",
+                         "ancb2020B_b17",
+                         "ancb2015A_b17",
+                         "ancb2015B_b17"))
+  bands             <- lapply(bands_17ls, rast)
+  return(bands)
+}
+sa_bands <- sa_bands17fn("~/data/raw/images")
 
 
-sa_qabands <- function(mine_areas) {
-  qa_bands <- list.files(mine_areas,
+sa_qabandsfn <- function(folders_images) {
+  qabands         <- list.files(folders_images,
                          recursive = T,
                          pattern = "\\PIXEL.TIF$",
                          full.names = TRUE)
-  sa_qa    <- list(qa_bands[grep("2021", qa_bands)], 
-                   qa_bands[grep("2015.*165069", qa_bands)],
-                   qa_bands[grep("2020.*165067", qa_bands)],
-                   qa_bands[grep("2020.*164068", qa_bands)],
-                   qa_bands[grep("2015.*165067", qa_bands)],
-                   qa_bands[grep("2015.*164068", qa_bands)],
-                   qa_bands[grep("2020.*165069", qa_bands)],
-                   qa_bands[grep("2020.*164069", qa_bands)],
-                   qa_bands[grep("2015.*165069", qa_bands)],
-                   qa_bands[grep("2015.*164069", qa_bands)])
+  sa_qa           <- list(qabands[grep("2021", qabands)], 
+                          qabands[grep("2015.*165069", qabands)],
+                          qabands[grep("2020.*165067", qabands)],
+                          qabands[grep("2020.*164068", qabands)],
+                          qabands[grep("2015.*165067", qabands)],
+                          qabands[grep("2015.*164068", qabands)],
+                          qabands[grep("2020.*165069", qabands)],
+                          qabands[grep("2020.*164069", qabands)],
+                          qabands[grep("2015.*165069", qabands)],
+                          qabands[grep("2015.*164069", qabands)])
   names(sa_qa)    <- list("blma2021_qa",
                           "blma2015_qa",
                           "plma2020A_qa",
                           "plma2020B_qa",
                           "plma2015A_qa",
                           "plma2015B_qa",
-                          "ancbe2020A_qa",
-                          "ancbe2020B_qa",
-                          "ancbe2015A_qa",
-                          "ancbe2015B_qa")
+                          "ancb2020A_qa",
+                          "ancb2020B_qa",
+                          "ancb2015A_qa",
+                          "ancb2015B_qa")
   sa_qarast <- lapply(sa_qa, rast)
   return(sa_qarast)
 }
-qa_bands <- sa_qabands("~/data/raw/images")
+qa_bands <- sa_qabandsfn("~/data/raw/images")
 
 
-qa_bandsCAT <- function(qa) {
-  qab            <- qa[[1]]
+qa_bandsCATfn <- function(qaBands) {
+  qab            <- qaBands[[1]]
   activeCat(qab) <- 0
   return(qab)
 }
-qa_CAT <- lapply(qa_bands, qa_bandsCAT)
+qa_bandsfinal <- lapply(qa_bands, qa_bandsCATfn)
+qa_bandsfinal
+```
 
+## Preprocessing the images
 
-aoi_L8  <- function(QAband, bands17, aoi_post) {
-  cloudmask     <- classify(QAband, rbind(c(21824, 21824), c(21952, 21952)),
-                         others = NA)
+Cloud masks for all the images are created and used to mask the clouded regions 
+from the images. The clear images - without clouds - are projected into the 
+Northern Mozambique's coordinate reference system. The images are cropped to 
+the area of interest (aoi) - the administrative post(s) which host the 
+extractive projects. 
+
+In cases where two images are necessary to 
+cover the administrative post(s), following cropping, the images are 
+mosaicked to create one image of the area.
+
+```{r}
+
+moz_crs    <- "+init=EPSG:32737"
+
+images_processfn  <- function(qaBands, bands17, aoi_post) {
+  cloudmask     <- classify(qaBands, 
+                            rbind(c(21824, 21824), 
+                                  c(21952, 21952)),
+                            others = NA)
   b17_clear     <- mask(bands17, cloudmask)
-  b17_clearProj <- terra::project(b17_clear, moz_crs)
+  b17_clearProj <- project(b17_clear, moz_crs)
   aoi_crop      <- crop(b17_clearProj, aoi_post, snap = "near", mask = TRUE)
-  aoi_cropmsk    <- mask(aoi_crop, aoi_post)
+  aoi_cropmsk   <- mask(aoi_crop, aoi_post)
   return(aoi_cropmsk)
 }
 
-#TODO use if else and for loop for chunk below?
-
-aois <- function(aoi_fun, qaband, bands17, aoi_post) {
-  sa_aoi        <- list(
-    "blma2021"  = aoi_fun(qaband[[1]], bands17[[1]], aoi_post[[1]]),
-    "blma2015"  = aoi_fun(qaband[[2]], bands17[[2]], aoi_post[[1]]),
-    "plma2020A" = aoi_fun(qaband[[3]], bands17[[3]], aoi_post[[2]]),
-    "plma2020B" = aoi_fun(qaband[[4]], bands17[[4]], aoi_post[[2]]),
-    "plma2015A" = aoi_fun(qaband[[5]], bands17[[5]], aoi_post[[2]]),
-    "plma2015B" = aoi_fun(qaband[[6]], bands17[[6]], aoi_post[[2]]),
-    "ancbe2020A" = aoi_fun(qaband[[7]], bands17[[7]], aoi_post[[3]]),
-    "ancbe2020B" = aoi_fun(qaband[[8]], bands17[[8]], aoi_post[[3]]),
-    "ancbe2015A" = aoi_fun(qaband[[9]], bands17[[9]], aoi_post[[3]]),
-    "ancbe2015B" = aoi_fun(qaband[[10]], bands17[[10]], aoi_post[[3]]))
+aois_imagesfn <- function(aoi_fun, qaband, bands17, aoi_post) {
+  aoisImages     <- list(
+    "blma2021"   = aoi_fun(qaband[[1]], bands17[[1]], aoi_post[[1]]),
+    "blma2015"   = aoi_fun(qaband[[2]], bands17[[2]], aoi_post[[1]]),
+    "plma2020A"  = aoi_fun(qaband[[3]], bands17[[3]], aoi_post[[3]]),
+    "plma2020B"  = aoi_fun(qaband[[4]], bands17[[4]], aoi_post[[3]]),
+    "plma2015A"  = aoi_fun(qaband[[5]], bands17[[5]], aoi_post[[3]]),
+    "plma2015B"  = aoi_fun(qaband[[6]], bands17[[6]], aoi_post[[3]]),
+    "ancb2020A"  = aoi_fun(qaband[[7]], bands17[[7]], aoi_post[[2]]),
+    "ancb2020B"  = aoi_fun(qaband[[8]], bands17[[8]], aoi_post[[2]]),
+    "ancb2015A"  = aoi_fun(qaband[[9]], bands17[[9]], aoi_post[[2]]),
+    "ancb2015B"  = aoi_fun(qaband[[10]], bands17[[10]], aoi_post[[2]]))
   AncbPlma2020_2015  <- list(
-    "ancbe2020" = mosaic(sa_aoi$ancbe2020A, sa_aoi$ancbe2020B),
-    "ancbe2015" = mosaic(sa_aoi$ancbe2015A, sa_aoi$ancbe2015B),
-    "plma2020" = mosaic(sa_aoi$plma2020A, sa_aoi$plma2020B),
-    "plma2015" = mosaic(sa_aoi$plma2015A, sa_aoi$plma2015B))
-  saAOI_combined <- c(sa_aoi, AncbPlma2020_2015)
-  saAOI          <- saAOI_combined[-c(3:10)]
-  return(saAOI)
+    "ancb2020"  = mosaic(aoisImages$ancb2020A, aoisImages$ancb2020B),
+    "ancb2015"  = mosaic(aoisImages$ancb2015A, aoisImages$ancb2015B),
+    "plma2020"  = mosaic(aoisImages$plma2020A, aoisImages$plma2020B),
+    "plma2015"  = mosaic(aoisImages$plma2015A, aoisImages$plma2015B))
+  aoisImages_all <- c(aoisImages, AncbPlma2020_2015)
+  aois_Images          <- aoisImages_all[-c(3:10)]
+  return(aois_Images)
 }
-aois_clean <- aois(aoi_L8, qa_CAT, sa_bands, sa_posts)
-#Warning message:
-#[mosaic] rasters did not align and were resampled
+aois_images <- aois_imagesfn(images_processfn, 
+                             qa_bandsfinal, 
+                             sa_bands, 
+                             sa_posts)
 
-aois_clean_bandnames <- function(aois_list) {
-  bandlist <- aois_list
-  for (i in 1:length(bandlist)) {
-  names(bandlist[[i]][[1:7]]) <- gsub(pattern = ".*SR",
-                                   replacement = names(bandlist[i]),
-                                   names(bandlist[[i]][[1:7]]))
+
+aois_imagesfinal_fn <- function(aois_imagesls) {
+  imageslist                      <- aois_imagesls
+  for (i in 1:length(imageslist)) {
+    names(imageslist[[i]][[1:7]]) <- gsub(pattern = ".*SR",
+                                          replacement = names(imageslist[i]),
+                                          names(imageslist[[i]][[1:7]]))
   }
-  return(bandlist)
+  return(imageslist)
 }
-aois_final <- aois_clean_bandnames(aois_clean)
-aois_final
-
+aois_imagesfinal <- aois_imagesfinal_fn(aois_images)
+aois_imagesfinal
 ```
 
 ## Classifying the images
