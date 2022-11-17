@@ -1,20 +1,22 @@
 ---
-title: "Land use land cover change due to energy transition-induced 
-        resource extraction in Cabo Delgado, Mozambique"
+title: "Land use land cover change due to energy transition-induced resource extraction
+  in Cabo Delgado, Mozambique"
 author: "Emilinah Namaganda"
-date:   "2022-11-16"
-output: html_document
-editor_options: 
+date: "2022-11-17"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
 ```
 
 ## Loading the necessary libraries
 
-```{r}
+```{r libraries}
 library(sf) 
 library(lintr) 
 library(rpart) 
@@ -31,7 +33,7 @@ library(terra)
 
 ## Loading the necessary data
 
-### Loading the boundaries of the projects and their surrounding areas
+### Boundaries of the projects and their surrounding areas
 
 The resource extracting projects (Twigg, GK and Total) are mainly hosted in 
 three administrative posts (Balama, Ancuabe and Palma). 
@@ -88,13 +90,13 @@ sa_pacsfn <- function(pacs) {
                      full.names = TRUE)
   twigg_pacs <- st_read(PACs[3], 
                         query = "SELECT NomeN1 FROM \"twiggPACS\"")
-  total_pacs <- st_read(PACs[2], 
-                        query = "SELECT Settlement FROM \"totalPACS\"")
   gk_pacs    <- st_read(PACs[1], 
                      query = "SELECT Community FROM \"gkPACS\"")
-  return(list("twigg_pacs" = twigg_pacs, 
-              "total_pacs" = total_pacs, 
-              "gk_pacs"    = gk_pacs))
+  total_pacs <- st_read(PACs[2], 
+                        query = "SELECT Settlement FROM \"totalPACS\"")
+  return(list("twigg_pacs" = twigg_pacs,
+              "gk_pacs"    = gk_pacs,
+              "total_pacs" = total_pacs))
 }
 sa_pacs <- sa_pacsfn("~/data/raw/mines/pacs")
 
@@ -113,7 +115,7 @@ study_areasfn <- function(mine_areas) {
 study_areas <- study_areasfn("~/data/raw/mines/stdyareas")
 ```
 
-### loading the satellite images of our areas of interest
+### Satellite images of our areas of interest
 
 To study the change in land use and land cover (lulc) in our areas of interest, 
 between 2015 to 2021, we use and therefore load bands 1 to 7 of the Landsat 8 
@@ -263,7 +265,7 @@ aois_imagesfinal <- aois_imagesfinal_fn(aois_images)
 aois_imagesfinal
 ```
 
-### Create training samples for image classification
+### Creating training samples for image classification
 
 To classify the images of our areas of interest, we created training samples 
 from RGB composites of the areas. To aid with distinguishing features, we also 
@@ -539,111 +541,114 @@ lulc_mines <- lulc_minesfn(aois_lulc, sa_mines)
 lulcdf_blmaAncb <- data.frame(id = 1:4, lulc = lulc_class$BlmaAncb)
 lulcdf_plma     <- data.frame(id = 1:4, lulc = lulc_class$Plma)
 
-LULCdf_ls <- list()
+saLULCdf <- sa_LULC
 
-LULCdf_fn <- function(stdyarea_lulc) {
-  for (i in 1:length(stdyarea_lulc)) {
-    LULCdf              <- stdyarea_lulc
-    levels(LULCdf[[i]]) <- lulc_df
-    LULCdf_ls[[i]]      <- as.data.frame(LULCdf[[i]], xy = TRUE)
-    names(LULCdf_ls)    <- names(LULCdf)
-    return(LULCdf_ls)
+levels(saLULCdf[[1]]) <- lulcdf_blmaAncb
+levels(saLULCdf[[2]]) <- lulcdf_blmaAncb
+levels(saLULCdf[[3]]) <- lulcdf_blmaAncb
+levels(saLULCdf[[4]]) <- lulcdf_blmaAncb
+levels(saLULCdf[[5]]) <- lulcdf_plma
+levels(saLULCdf[[6]]) <- lulcdf_plma
+
+
+for (i in 1:length(saLULCdf)) {
+  saLULCdf[[i]] <- as.data.frame(saLULCdf[[i]], xy=TRUE)
 }
-}
-sa_LULCdf <- LULCdf_fn(sa_LULC)
+
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$blma2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$twigg, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$twigg_pacs, fill = NA) +
-  geom_sf_text(data = pacs$twigg_pacs, aes(label = NomeN1)) +
+  geom_tile(data = saLULCdf[[1]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[1]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[1]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[1]], aes(label = NomeN1)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Balama 2021 land use land cover") +
+       title        = "Balama 2021 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb) +
-  coord_sf(datum = st_crs(mines$twigg))
+                    values = lulc_cols[[1]],
+                    labels = lulc_class[[1]]) +
+  coord_sf(datum    = st_crs(sa_mines[[1]]))
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$blma2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$twigg, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$twigg_pacs, fill = NA) +
-  geom_sf_text(data = pacs$twigg_pacs, aes(label = NomeN1)) +
+  geom_tile(data = saLULCdf[[2]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[1]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[1]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[1]], aes(label = NomeN1)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Balama 2015 land use land cover") +
+       title        = "Balama 2015 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb) +
-  coord_sf(datum = st_crs(mines$twigg))
+                    values = lulc_cols[[1]],
+                    labels = lulc_class[[1]]) +
+  coord_sf(datum   = st_crs(sa_mines[[1]]))
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$ancb2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$gk, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$gk_pacs, fill = NA) +
-  geom_sf_text(data = pacs$gk_pacs, aes(label = Community)) +
+  geom_tile(data = saLULCdf[[3]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[2]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[2]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[2]], aes(label = Community)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Ancuabe 2020 land use land cover") +
+       title       = "Ancuabe 2020 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb) +
-  coord_sf(datum = st_crs(mines$gk))
+                    values = lulc_cols[[1]],
+                    labels = lulc_class[[1]]) +
+  coord_sf(datum   = st_crs(sa_mines[[2]]))
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$ancb2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$gk, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$gk_pacs, fill = NA) +
-  geom_sf_text(data = pacs$gk_pacs, aes(label = Community)) +
+  geom_tile(data = saLULCdf[[4]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[2]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[2]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[2]], aes(label = Community)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Ancuabe 2015 land use land cover") +
+       title       = "Ancuabe 2015 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_BlmaAncb,
-                    labels = lulc_classes$class_BlmaAncb) +
-  coord_sf(datum = st_crs(mines$gk))
+                    values = lulc_cols[[2]],
+                    labels = lulc_class[[2]]) +
+  coord_sf(datum  = st_crs(sa_mines[[2]]))
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$plma2021_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$total, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$total_pacs, fill = NA) +
-  geom_sf_text(data = pacs$total_pacs, aes(label = Settlement)) +
+  geom_tile(data = saLULCdf[[5]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[3]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[3]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[3]], aes(label = Settlement)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Palma 2020 land use land cover") +
+       title        = "Palma 2020 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_Plma,
-                    labels = lulc_classes$class_Plma) +
-  coord_sf(datum = st_crs(mines$total))
+                    values = lulc_cols[[2]],
+                    labels = lulc_class[[2]]) +
+  coord_sf(datum   = st_crs(sa_mines[[3]]))
 
 ggplot() +
-  geom_tile(data = SA_LULCdf$plma2015_LULC.tif, aes(x = x, y = y, fill = lulc)) +
-  geom_sf(data = mines$total, colour = "black", fill = NA, size = 1) +
-  geom_sf(data = pacs$total_pacs, fill = NA) +
-  geom_sf_text(data = pacs$total_pacs, aes(label = Settlement)) +
+  geom_tile(data = saLULCdf[[6]], aes(x = x, y = y, fill = lulc)) +
+  geom_sf(data   = sa_mines[[3]], colour = "black", fill = NA, size = 1) +
+  geom_sf(data   = sa_pacs[[3]], fill = NA) +
+  geom_sf_text(data = sa_pacs[[3]], aes(label = Settlement)) +
   labs(x = NULL, 
        y = NULL, 
-       title = "Palma 2015 land use land cover") +
+       title       = "Palma 2015 land use land cover") +
   scale_fill_manual("LULC",
                     na.translate = FALSE,
-                    values = lulc_cols$cols_Plma,
-                    labels = lulc_classes$class_Plma) +
-  coord_sf(datum = st_crs(mines$total))
+                    values = lulc_cols[[2]],
+                    labels = lulc_class[[2]]) +
+  coord_sf(datum   = st_crs(sa_mines[[3]]))
 ```
 
 ## Change detection
 
-The cropped outputs include a 'count' column which includes area in pixels 
-taken up by each lulc class. We multiply these areas by 0.0009 to convert it to 
-square kilometers. We use the changes in these lulc areas for each location 
-over the two time stamps (2021/2020 & 2015) to determine the change in lulc due 
-to energy transition-induced resource extraction in Cabo Delgado, Mozambique.
+The classified images of the study and projects' areas include a 'count' column 
+which includes area in pixels taken up by each lulc class. We multiply these 
+areas by 0.0009 to convert them to square kilometers. We use the changes in 
+these lulc areas for each location over the two time stamps (2021/2020 & 2015) 
+to determine the change in lulc due to energy transition-induced resource 
+extraction in Cabo Delgado, Mozambique.
 
 
 ```{r}
@@ -659,53 +664,58 @@ for (i in 1:length(lulc_mines)) {
 ```
 
 
-### Accuracy assessment
+## Accuracy assessment
+
+We assess the accuracy of our land use land cover classification.
 
 ```{r}
 accuracies <- list()
 
-lulc_accs <- function(sampsRF) {
+lulc_accsFN <- function(sampsRF) {
   for (k in 1:5) {
                   set.seed(555)
-    sampsRF    <- st_drop_geometry(sampsRF)
-    sampGrps   <- kfold(sampsRF, k = 5, by = sampsRF$class)
-                  print(table(sampGrps))
-    train      <- sampsRF[sampGrps!= k, ]
-    test       <- sampsRF[sampGrps == k, ]
-    model      <- randomForest(as.factor(class)~., data=train, method = 'class', minsplit = 5)
-    classfd    <- predict(model, test, na.rm = TRUE)
+    sampsRF         <- st_drop_geometry(sampsRF)
+    sampGrps        <- kfold(sampsRF, k = 5, by = sampsRF$class)
+                       print(table(sampGrps))
+    train           <- sampsRF[sampGrps!= k, ]
+    test            <- sampsRF[sampGrps == k, ]
+    model           <- randomForest(as.factor(class)~., 
+                                    data=train, 
+                                    method = 'class', 
+                                    minsplit = 5)
+    classfd         <- predict(model, test, na.rm = TRUE)
     accuracies[[k]] <- cbind(test$class, as.integer(classfd))
   }
   return(accuracies)
 }
-aoi_acc_assessment <-  lapply(study_samps, lulc_accs)
+lulc_accs <-  lapply(sa_samps, lulc_accsFN)
 
-lulc_df            <- data.frame(id = 1:4, lulc = lulc_classes$class_BlmaAncb)
 
-lulc_acc <- function(accuracies) {
+lulc_acc <- function(accuracies, lulcdf) {
   acctidy            <- do.call(rbind, accuracies)
   acctidy            <- data.frame(acctidy)
   colnames(acctidy)  <- c('observed', 'predicted')
   confmat            <- table(acctidy)
-  colnames(confmat)  <- lulc_df$class #TODO specify class per location
-  samples            <- sum(confmat)
-  samples_true       <- diag(confmat)
-  overallAcc         <- sum(samples_true)/samples
+  colnames(confmat)  <- lulcdf$class
+  testSamps          <- sum(confmat)
+  testSamps_true     <- diag(confmat)
+  overallAcc         <- sum(testSamps_true)/testSamps
   obsCases           <- apply(confmat, 1, sum)
-  obsCases_true      <- obsCases/samples
+  obsCases_true      <- obsCases/testSamps
   predCases          <- apply(confmat, 2, sum)
-  predCases_true     <- predCases/samples
+  predCases_true     <- predCases/testSamps
   expAcc             <- sum(obsCases_true*predCases_true)
   kappa              <- (overallAcc - expAcc)/(1 - expAcc)
-  ProdAcc            <- samples_true/predCases
-  UserAcc            <- samples_true/obsCases
+  ProdAcc            <- testSamps_true/predCases
+  UserAcc            <- testSamps_true/obsCases
   outAcc             <- data.frame(ProdAcc, UserAcc)
   lulc_acc           <- list(confmat, overallAcc, kappa, outAcc)
   return(lulc_acc)
 }
 
-LULC_finalaccs <- lapply(aoi_acc_assessment, lulc_acc)
-
+LULC_accsBlmaAncb <- lapply(lulc_accs[1:4], lulcdf_blmaAncb, FUN=lulc_acc)
+LULC_accsPlma     <- lapply(lulc_accs[5:6], lulcdf_blmaAncb, FUN=lulc_acc)
+LULC_accsPlma
 ```
 
 ## References
