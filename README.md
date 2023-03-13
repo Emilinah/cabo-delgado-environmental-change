@@ -69,7 +69,7 @@ ArcMap version 10.8.1
 ## Raw data sources
 
 All the Landsat images were downloaded from the USGS Earth Explorer website: https://earthexplorer.usgs.gov/. 
-The path and row names were: Balama (xx), Ancuabe (xx), and Palma (xx). The QA_PIXEL bands were decoded in arcgis, 
+The path and row names were (all Landsat 8): Balama (165069), Ancuabe (165069;164069), and Palma (165067;164068). The QA_PIXEL bands were decoded in arcgis, 
 using the decode QA tool from the landsat-qa-arcgis-toolbox v.1.5.1, downloaded from earth explorer:
 https://www.usgs.gov/landsat-missions/landsat-quality-assessment-arcgis-toolbox.
 
