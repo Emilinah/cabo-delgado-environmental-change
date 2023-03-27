@@ -1,11 +1,12 @@
 ---
-title: "Land use land cover change due to energy transition-induced resource extraction
-  in Cabo Delgado, Mozambique"
+title: "Land use land cover change due to energy transition-induced resource 
+        extraction in Cabo Delgado, Mozambique"
 author: "Emilinah Namaganda"
 date: "2022-11-17"
 output:
-  pdf_document: default
+  word_document: default
   html_document: default
+  pdf_document: default
 editor_options:
   chunk_output_type: console
 ---
@@ -66,7 +67,6 @@ sa_postsfn <- function(posts) {
 }
 sa_posts <- sa_postsfn("~/data/raw/mines/admposts")
 
-
 sa_minesfn <- function(mines) {
   samines <- list.files(mines, 
                       pattern = "\\.shp$", 
@@ -83,7 +83,6 @@ sa_minesfn <- function(mines) {
 }
 sa_mines <- sa_minesfn("~/data/raw/mines/mines")
 
-
 sa_pacsfn <- function(pacs) {
   PACs       <- list.files(pacs, 
                      pattern = "\\.shp$", 
@@ -99,7 +98,6 @@ sa_pacsfn <- function(pacs) {
               "total_pacs" = total_pacs))
 }
 sa_pacs <- sa_pacsfn("~/data/raw/mines/pacs")
-
 
 study_areasfn <- function(mine_areas) {
   studyAreas          <- list.files(mine_areas, 
@@ -156,7 +154,6 @@ sa_bands17fn <- function(folders_images) {
 }
 sa_bands <- sa_bands17fn("~/data/raw/images")
 
-
 sa_qabandsfn <- function(folders_images) {
   qabands         <- list.files(folders_images,
                          recursive = T,
@@ -186,7 +183,6 @@ sa_qabandsfn <- function(folders_images) {
   return(sa_qarast)
 }
 qa_bands <- sa_qabandsfn("~/data/raw/images")
-
 
 qa_bandsCATfn <- function(qaBands) {
   qab            <- qaBands[[1]]
@@ -251,7 +247,6 @@ aois_images <- aois_imagesfn(images_processfn,
                              sa_bands, 
                              sa_posts)
 
-
 aois_imagesfinal_fn <- function(aois_imagesls) {
   imageslist                      <- aois_imagesls
   for (i in 1:length(imageslist)) {
@@ -281,10 +276,11 @@ We created approximately 500 pixels per image. This process was conducted in
 ArcGIS Pro Version 2.8.3, but it can also be done in open access QGIS 
 (https://www.qgis.org/en/site/).
 
-Where possible, training samples can (and for increased accuracy should be) 
-generated from groundtruth data. However, given the wide extent of the study 
-areas, and the inaccessibility of some of these areas due to an armed conflict, 
-creation of training samples from the images was most feasible. The generation 
+Where possible, training and/or validation samples can (and for improved 
+accuracy and reliability should be) generated from groundtruth data. However, 
+given the wide extent of the study areas, and the inaccessibility of some of 
+these areas due to an armed conflict, creation of training and validation 
+samples from the images was most feasible. The generation 
 of training samples from imagery as a surrogate for ground observation has been 
 utilized in other cases (Foody, 2002).
 
@@ -319,7 +315,6 @@ aois_RGB <- function(bands17) {
   return(aois_comp)
 }
 aois_compst <- aois_RGB(aois_imagesfinal)
-
 
 indices <- function(bands17, x, y) {
   bandx   <- bands17[[x]]
@@ -715,7 +710,6 @@ lulc_acc <- function(accuracies, lulcdf) {
 
 LULC_accsBlmaAncb <- lapply(lulc_accs[1:4], lulcdf_blmaAncb, FUN=lulc_acc)
 LULC_accsPlma     <- lapply(lulc_accs[5:6], lulcdf_blmaAncb, FUN=lulc_acc)
-LULC_accsPlma
 ```
 
 ## References
