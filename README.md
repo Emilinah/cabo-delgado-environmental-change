@@ -85,7 +85,7 @@ This project is licensed under the terms of the [CC-BY-4.0](/LICENSE.md)
 
 ## Citation
 
-Please [cite this project as Emilinah Namaganda(2022), Cabo Delgado environmental change - version 0.1.0. url:github.com/Emilinah/cabo-delgado-environmental-change], ![image](https://user-images.githubusercontent.com/22329182/228080127-ea299ff3-a3f6-4c47-bf30-955b7daf9e90.png).
+Please cite this project as Emilinah Namaganda(2022), Cabo Delgado environmental change - version 0.1.0. url:github.com/Emilinah/cabo-delgado-environmental-change], ![image](https://user-images.githubusercontent.com/22329182/228080127-ea299ff3-a3f6-4c47-bf30-955b7daf9e90.png).
 
 ## Contact
 
