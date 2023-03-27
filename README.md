@@ -4,7 +4,7 @@ Binder - online view of project: https://mybinder.org/v2/gh/Emilinah/cabo-delgad
 
 Version 0.1.0
 
-In this project, we analyze the environmental changes due to green extractivism in Cabo Delgado province, Mozambique.
+In this project, I analyze the environmental changes due to energy transition-induced extractivism in Cabo Delgado province, Mozambique.
 
 
 ## Project organization
@@ -40,7 +40,7 @@ This is the soft- and hard-ware I used to write conduct this analysis.
 ### R programming language
 
 R version 4.2.1 (2022-06-23 ucrt)
-RStudio version 2021.09.1+372
+RStudio version 2021.07.2+576
 Platform: x86_64-w64-mingw32/x64 (64-bit)
 Running under: Windows 10 x64 (build 19042)
 
@@ -64,7 +64,7 @@ https://support.rstudio.com/hc/en-us/articles/201057987-Quick-list-of-useful-R-p
 
 ### Others
 
-ArcMap version 10.8.1
+ArcGIS Pro Version 2.8.3
 
 ## Raw data sources
 
