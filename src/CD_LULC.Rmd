@@ -2,7 +2,7 @@
 title: "Land use land cover change due to energy transition-induced resource 
         extraction in Cabo Delgado, Mozambique"
 author: "Emilinah Namaganda"
-date: "2022-11-17"
+date: "2023-03-29"
 output:
   word_document: default
   html_document: default
@@ -30,26 +30,28 @@ library(caret)
 library(e1071)
 library(rgdal)
 library(terra)
+library(sperrorest)
 ```
 
 ## Loading the necessary data
 
 ### Boundaries of the projects and their surrounding areas
 
-The resource extracting projects (Twigg, GK and Total) are mainly hosted in 
-three administrative posts (Balama, Ancuabe and Palma). 
+The resource extracting (mining) projects (Twigg, GK and Total) are mainly 
+hosted in three administrative posts (Balama, Ancuabe and Palma). 
 
-Therefore, our areas of interest (aoi) include: the administrative posts, 
-the boundaries of the projects, and the areas surrounding the projects, that is, 
-including the project affected communities (PACs). Of these, our principal 
-study areas are the boundaries of the projects and their surroundings.
+Therefore, the areas of interest (aoi) include: 1) the administrative posts, 
+2) the mine areas (as officially defined in the mining licences), and 3) the 
+mine areas and their immediate surroundings, that is, including the mine/project 
+affected communities (PACs) (I refer to this wider area as the 'study area'). 
 
-We acquired the relevant shapefiles from various sources including:-
-- Administrative posts and location of communities: In Mozambique, Eduardo 
-  Mondlane University and the Ministry of Transport and Communication; 
-  specifically the Spatial Development Program (SDP). Similar shapefiles can be 
-  acquired from online open access sources such as GRID: https://data.grid3.org/
-- Boundaries of mines: https://portals.landfolio.com/mozambique/en/ 
+I acquired the relevant shapefiles from various sources including:-
+- Eduardo Mondlane University and the Ministry of Transport and Communication in 
+  Mozambique, specifically the Spatial Development Program (SDP), for data on 
+  the Administrative posts and location of communities. Similar shapefiles can 
+  be acquired from online open access sources such as GRID: 
+  https://data.grid3.org/
+- https://portals.landfolio.com/mozambique/en/ for the boundaries of mines.
 
 ```{r}
 knitr::opts_chunk$set(echo = FALSE)
@@ -113,11 +115,11 @@ study_areasfn <- function(mine_areas) {
 study_areas <- study_areasfn("~/data/raw/mines/stdyareas")
 ```
 
-### Satellite images of our areas of interest
+### Satellite images of the areas of interest
 
-To study the change in land use and land cover (lulc) in our areas of interest, 
-between 2015 to 2021, we use and therefore load bands 1 to 7 of the Landsat 8 
-satellite. We also load the qa bands which indicate the pixels within the 
+To study the change in land use and land cover (lulc) in the areas of interest, 
+between 2015 to 2021, I use and therefore load bands 1 to 7 of the Landsat 8 
+satellite. I also load the qa bands which indicate the pixels within the 
 images that are covered by clouds.
 
 All the images were downloaded from https://earthexplorer.usgs.gov/ 
@@ -190,17 +192,16 @@ qa_bandsCATfn <- function(qaBands) {
   return(qab)
 }
 qa_bandsfinal <- lapply(qa_bands, qa_bandsCATfn)
-qa_bandsfinal
 ```
 
 ## Data preprocessing and analysis
 
 ### Preprocessing the images
 
-To prepare the images for analysis, we create and use a cloud mask to mask out 
+To prepare the images for analysis, I create and use a cloud mask to mask out 
 the clouded regions from the images. The cloud-free images are re-projected
 into the right geographic coordinates for northern Mozambique and cropped to 
-the levels of our administrative posts of interest.
+the levels of the administrative posts of interest.
 
 In cases where two images are necessary to cover the relevant administrative 
 post(s), the cropped images are mosaicked to create one image of each area for 
@@ -257,32 +258,33 @@ aois_imagesfinal_fn <- function(aois_imagesls) {
   return(imageslist)
 }
 aois_imagesfinal <- aois_imagesfinal_fn(aois_images)
-aois_imagesfinal
 ```
 
 ### Creating training samples for image classification
 
-To classify the images of our areas of interest, we created training samples 
-from RGB composites of the areas. To aid with distinguishing features, we also 
-used ndvi layers, Google Earth (https://earth.google.com/web/), and published 
-projects' environmental impact assessment reports:
+To classify the images of the areas of interest, I created training samples 
+from RGB composites of the areas. To aid with distinguishing features, I  
+utilized ndvi layers, Google Earth (https://earth.google.com/web/), knowledge of
+the study areas from field visits, and published projects' environmental 
+impact assessment reports:
  - Twigg (http://www.cesnet.co.za/pubdocs/Syrah%20Balama%20Graphite%20Mine%20
    Port%20CB290814/Parte%20II%20ESHIAR.pdf)
  - Total (https://mzlng.totalenergies.co.mz/sites/g/files/wompnd2311/f/atoms/
    files/mz-000-am1-hs-rpt-00002_eshia_executive_summary_and_update-05-19-2020.
    pdf).
 
-We created approximately 500 pixels per image. This process was conducted in 
+I created approximately 500 pixels per image. This process was conducted in 
 ArcGIS Pro Version 2.8.3, but it can also be done in open access QGIS 
 (https://www.qgis.org/en/site/).
 
-Where possible, training and/or validation samples can (and for improved 
-accuracy and reliability should be) generated from groundtruth data. However, 
+For improved reliability of the classification model, training and/or validation 
+samples should be generated from groundtruth data, where possible. However, 
 given the wide extent of the study areas, and the inaccessibility of some of 
-these areas due to an armed conflict, creation of training and validation 
-samples from the images was most feasible. The generation 
-of training samples from imagery as a surrogate for ground observation has been 
-utilized in other cases (Foody, 2002).
+these areas due to an armed conflict, training and validation 
+data for this study were collected from the same image data, supplemented with 
+the aforementioned secondary material. The generation of training samples from 
+imagery as a surrogate for ground observation has been utilized in other studies 
+(Foody, 2002).
 
 ```{r}
 comp   <- function(bands17, x, y, z) {
@@ -351,10 +353,11 @@ train_polys <- list(
   "plma2015_train" = vect("~/data/temp/training-samples/plma2015_train500.shp"))
 ```
 
-From the training sample polygons, we select sample points for use in the 
-lulc classification process. The spectral profiles of the samples can be 
-inspected to ensure adequate differentiation among the lulc classes. We follow 
-the workflow suggested by Ghosh & Hijmans (2021).
+For the supervised classification, I follow the workflow suggested by 
+Ghosh & Hijmans (2021). From the training sample polygons, I select sample 
+points for use in the lulc classification process. The spectral profiles of the 
+samples can be inspected to ensure adequate differentiation among the lulc 
+classes. 
 
 ```{r}
 samps <- function(train, image_aoi) {
@@ -379,7 +382,6 @@ names(sa_samps) <- c("blma2021_samps",
                      "ancb2015_samps",
                      "plma2020_samps",
                      "plma2015_samps")
-
 
 sampsSP <- function(samps) {
   sampsSP             <- aggregate(st_drop_geometry(samps)[, -1], 
@@ -465,8 +467,8 @@ sampsSPgraph             <- list(
 
 ## Image classification 
 
-We classify each image using the random forest model and crop the output by the
-three study areas and by the boundaries of the three projects. 
+I classify each image using the random forest model. Afterwards, I crop the 
+output by the study and mine areas. 
 
 ```{r}
 comp_4bs   <- function(bands17, w, x, y, z) {
@@ -638,12 +640,12 @@ ggplot() +
 
 ## Change detection
 
-The classified images of the study and projects' areas include a 'count' column 
-which includes area in pixels taken up by each lulc class. We multiply these 
-areas by 0.0009 to convert them to square kilometers. We use the changes in 
+The classified images of the study and mine areas include a 'count' column 
+which includes area in pixels taken up by each lulc class. I multiply these 
+areas by 0.0009 to convert them to square kilometers. I use the changes in 
 these lulc areas for each location over the two time stamps (2021/2020 & 2015) 
-to determine the change in lulc due to energy transition-induced resource 
-extraction in Cabo Delgado, Mozambique.
+to determine the change in lulc due to the three energy transition-related 
+resource extraction areas.
 
 
 ```{r}
@@ -661,7 +663,10 @@ for (i in 1:length(lulc_mines)) {
 
 ## Accuracy assessment
 
-We assess the accuracy of our land use land cover classification.
+I assess the accuracy of the lulc classification model using 
+k-fold cross validation. I also conduct a spatial cross validation to assess the 
+accuracy of the model, while taking into account possible spatial 
+autocorrelation (Brenning, 2012), which is common with spatial data.
 
 ```{r}
 accuracies <- list()
@@ -710,13 +715,71 @@ lulc_acc <- function(accuracies, lulcdf) {
 
 LULC_accsBlmaAncb <- lapply(lulc_accs[1:4], lulcdf_blmaAncb, FUN=lulc_acc)
 LULC_accsPlma     <- lapply(lulc_accs[5:6], lulcdf_blmaAncb, FUN=lulc_acc)
+LULC_accsPlma
+
+samps_val <- function(train, image_aoi) {
+                set.seed(555)
+  Tsamps     <- spatSample(train, 1000, method = "regular")
+  sampsXY    <- as.matrix(geom(Tsamps)[,c('x','y')])
+  sampsdf    <- extract(image_aoi[[3:6]], sampsXY)
+  samps      <- data.frame(class = as.factor(Tsamps$Classname), sampsdf)
+  sampsGeo   <- cbind(samps, sampsXY)
+  return(sampsGeo)
+}
+sa_samps_val        <- mapply(train_polys, 
+                          aois_imagesfinal, 
+                          FUN = samps_val, 
+                          SIMPLIFY = F)
+names(sa_samps_val) <- c("blma2021_sampsV",
+                         "blma2015_sampsV",
+                         "ancb2020_sampsV",
+                         "ancb2015_sampsV",
+                         "plma2020_sampsV",
+                         "plma2015_sampsV")
+
+blma21 <- class~blma2021_B3 + blma2021_B4 + blma2021_B5 + blma2021_B6
+blma15 <- class~blma2015_B3 + blma2015_B4 + blma2015_B5 + blma2015_B6
+ancb20 <- class~ancb2020_B3 + ancb2020_B4 + ancb2020_B5 + ancb2020_B6
+ancb15 <- class~ancb2015_B3 + ancb2015_B4 + ancb2015_B5 + ancb2015_B6
+plma20 <- class~plma2020_B3 + plma2020_B4 + plma2020_B5 + plma2020_B6
+plma15 <- class~plma2015_B3 + plma2015_B4 + plma2015_B5 + plma2015_B6
+
+forms <- c(blma21, blma15, ancb20, ancb15, plma20, plma15)
+lapply(forms, as.formula)
+
+mypred.rf <- function(object, newdata) {
+  predict(object, newdata, na.rm = TRUE)
+}
+
+spCV <- function(valsamps, form){
+              set.seed(555)
+  spCV_all <- sperrorest(data = valsamps, 
+                     formula = form,
+                     model_fun = randomForest,
+                     model_args = list(method = 'class'),
+                     pred_fun = mypred.rf,
+                     smp_fun = partition_kmeans,
+                     smp_args = list(repetition = 1:10, nfold = 5))
+  return(spCV_all)
+}
+
+blma21_accV <- spCV(sa_samps_val[[1]], forms[[1]])
+blma15_accV <- spCV(sa_samps_val[[2]], forms[[2]])
+ancb20_accV <- spCV(sa_samps_val[[3]], forms[[3]])
+ancb15_accV <- spCV(sa_samps_val[[4]], forms[[4]])
+plma20_accV <- spCV(sa_samps_val[[5]], forms[[5]])
+plma15_accV <- spCV(sa_samps_val[[6]], forms[[6]])
 ```
 
 ## References
 
-Foody, G. M. (2002). Status of land cover classification accuracy assessment. 
+Brenning, A., 2012. Spatial cross-validation and bootstrap for the assessment 
+of prediction rules in remote sensing: The R package sperrorest. In 2012 IEEE 
+international geoscience and remote sensing symposium (5372-5375). IEEE. 
+
+Foody, G. M., 2002. Status of land cover classification accuracy assessment. 
 Remote sensing of environment, 80(1), 185-201.
 
-Ghosh, A., & Hijmans, R. J. (2021). Remote sensing image analysis with R. 
+Ghosh, A., & Hijmans, R. J., 2021. Remote sensing image analysis with R. 
 Rspatial.org.
 
