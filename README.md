@@ -1,10 +1,8 @@
-# Cabo Delgado environmental change
+# Cabo Delgado land use land cover change
 
-Binder - online view of project: https://mybinder.org/v2/gh/Emilinah/cabo-delgado-environmental-change/master
+Version 0.1.1
 
-Version 0.1.0
-
-In this project, I analyze the environmental changes due to energy transition-induced extractivism in Cabo Delgado province, Mozambique.
+In this project, I analyze the land use land cover changes due to energy transition-induced resource extraction in Cabo Delgado province, Mozambique.
 
 
 ## Project organization
@@ -85,7 +83,7 @@ This project is licensed under the terms of the [CC-BY-4.0](/LICENSE.md)
 
 ## Citation
 
-Please cite this project as Emilinah Namaganda(2022), Cabo Delgado environmental change - version 0.1.0. url:github.com/Emilinah/cabo-delgado-environmental-change], https://zenodo.org/badge/516493492.svg.
+Please cite this project as Emilinah Namaganda (2023), Cabo Delgado land use land cover change, version 0.1.1. url: https://github.com/Emilinah/cabo-delgado-lulc-change; https://doi.org/10.5281/zenodo.7783024.
 
 ## Contact
 
