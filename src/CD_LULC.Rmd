@@ -2,7 +2,7 @@
 title: "Land use land cover change due to energy transition-induced resource 
         extraction in Cabo Delgado, Mozambique"
 author: "Emilinah Namaganda"
-date: "2023-03-29"
+date: "2023-03-31"
 output:
   word_document: default
   html_document: default
@@ -666,7 +666,11 @@ for (i in 1:length(lulc_mines)) {
 I assess the accuracy of the lulc classification model using 
 k-fold cross validation. I also conduct a spatial cross validation to assess the 
 accuracy of the model, while taking into account possible spatial 
-autocorrelation (Brenning, 2012), which is common with spatial data.
+autocorrelation (Brenning, 2012), which is common with spatial data. The 
+water and wetland classes are spatially-small, compared to the rest of the 
+classes. This imbalance likely contributes to an optimistic assessment of the 
+accuracy of the classification. I repeat the spatial cross validation, excluding
+the water and wetland classes.
 
 ```{r}
 accuracies <- list()
@@ -715,7 +719,7 @@ lulc_acc <- function(accuracies, lulcdf) {
 
 LULC_accsBlmaAncb <- lapply(lulc_accs[1:4], lulcdf_blmaAncb, FUN=lulc_acc)
 LULC_accsPlma     <- lapply(lulc_accs[5:6], lulcdf_blmaAncb, FUN=lulc_acc)
-LULC_accsPlma
+
 
 samps_val <- function(train, image_aoi) {
                 set.seed(555)
@@ -744,7 +748,7 @@ ancb15 <- class~ancb2015_B3 + ancb2015_B4 + ancb2015_B5 + ancb2015_B6
 plma20 <- class~plma2020_B3 + plma2020_B4 + plma2020_B5 + plma2020_B6
 plma15 <- class~plma2015_B3 + plma2015_B4 + plma2015_B5 + plma2015_B6
 
-forms <- c(blma21, blma15, ancb20, ancb15, plma20, plma15)
+forms  <- c(blma21, blma15, ancb20, ancb15, plma20, plma15)
 lapply(forms, as.formula)
 
 mypred.rf <- function(object, newdata) {
@@ -769,6 +773,49 @@ ancb20_accV <- spCV(sa_samps_val[[3]], forms[[3]])
 ancb15_accV <- spCV(sa_samps_val[[4]], forms[[4]])
 plma20_accV <- spCV(sa_samps_val[[5]], forms[[5]])
 plma15_accV <- spCV(sa_samps_val[[6]], forms[[6]])
+
+
+train_polys_3cls <- train_polys
+
+tply_3cls <- list()
+
+for(i in 1:length(train_polys_3cls)) {
+  cls3 <- train_polys_3cls[[i]][!((train_polys_3cls[[i]][[1]]=="water") | (train_polys_3cls[[i]][[1]]=="wetland")), ]
+  tply_3cls[[i]]   <- cls3
+}
+
+names(tply_3cls) <- names(train_polys_3cls)
+
+samps_val_3cls <- function(train, image_aoi) {
+  set.seed(555)
+  Tsamps     <- spatSample(train, 1000, method = "random")
+  sampsXY    <- as.matrix(geom(Tsamps)[,c('x','y')])
+  sampsdf    <- extract(image_aoi[[3:6]], sampsXY)
+  samps      <- data.frame(class = as.factor(Tsamps$Classname), sampsdf)
+  sampsGeo   <- cbind(samps, sampsXY)
+  return(sampsGeo)
+}
+
+sa_samps_val_3cls        <- mapply(tply_3cls, 
+                                   aois_imagesfinal, 
+                                   FUN = samps_val_3cls, 
+                                   SIMPLIFY = F)
+names(sa_samps_val_3cls) <- c("blma2021_sampsV",
+                              "blma2015_sampsV",
+                              "ancb2020_sampsV",
+                              "ancb2015_sampsV",
+                              "plma2020_sampsV",
+                              "plma2015_sampsV")
+
+blma21_accV_3cls <- spCV(sa_samps_val_3cls[[1]], forms[[1]])
+blma15_accV_3cls <- spCV(sa_samps_val_3cls[[2]], forms[[2]])
+ancb20_accV_3cls <- spCV(sa_samps_val_3cls[[3]], forms[[3]])
+ancb15_accV_3cls <- spCV(sa_samps_val_3cls[[4]], forms[[4]])
+plma20_accV_3cls <- spCV(sa_samps_val_3cls[[5]], forms[[5]])
+plma15_accV_3cls <- spCV(sa_samps_val_3cls[[6]], forms[[6]])
+
+summary(ancb15_accV_3cls$error_rep$test_error)
+summary(ancb15_accV_3cls$error_rep$test_accuracy)
 ```
 
 ## References
